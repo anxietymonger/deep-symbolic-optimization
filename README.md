@@ -1,3 +1,27 @@
+# Reproduce
+
+Install python3.6 via pyenv.
+
+pyenv needs the following to build python.
+
+```
+sudo apt-get install build-essential zlib1g-dev libffi-dev libssl-dev libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev libncurses-dev tk-dev
+```
+
+Switch to python3.6 and upgrade pip, or llvmlite won't be installed.
+
+```
+pip install -U pip
+```
+
+Finally, following the document,
+
+```
+pip install --upgrade setuptools pip
+export CFLAGS="-I $(python -c "import numpy; print(numpy.get_include())") $CFLAGS" # Needed on Mac to prevent fatal error: 'numpy/arrayobject.h' file not found
+pip install -e ./dso # Install DSO package and core dependencies
+```
+
 # Deep Symbolic Optimization
 
 <p align="center">
@@ -19,7 +43,7 @@ This repository contains code supporting the following publications:
 1. Petersen et al. 2021 **Deep symbolic regression: Recovering mathematical expressions from data via risk-seeking policy gradients.** *ICLR 2021.* [Oral](https://iclr.cc/virtual/2021/poster/2578) [Paper](https://openreview.net/forum?id=m5Qsh0kBQG)
 2. Landajuela et al. 2021 **Discovering symbolic policies with deep reinforcement learning.** *ICML 2021.* [Paper](https://proceedings.mlr.press/v139/landajuela21a.html)
 3. Mundhenk et al. 2021 **Symbolic Regression via Neural-Guided Genetic Programming Population Seeding.** *NeurIPS 2021* [Paper](https://proceedings.neurips.cc/paper/2021/hash/d073bb8d0c47f317dd39de9c9f004e9d-Abstract.html)
-4. Landajuela et al. 2022 **A Unified Framework for Deep Symbolic Regression.** *NeurIPS 2022* [Paper](https://openreview.net/forum?id=2FNnBhwJsHK)  
+4. Landajuela et al. 2022 **A Unified Framework for Deep Symbolic Regression.** *NeurIPS 2022* [Paper](https://openreview.net/forum?id=2FNnBhwJsHK)
 5. Landajuela et al. 2021 **Improving exploration in policy gradient search: Application to symbolic optimization.** *Math-AI @ ICLR 2021.* [Paper](https://mathai-iclr.github.io/papers/papers/MATHAI_16_paper.pdf)
 6. Kim et al. 2020 **An interactive visualization platform for deep symbolic regression.** *IJCAI 2020.* [Paper](https://www.ijcai.org/Proceedings/2020/0763.pdf)
 7. Petersen et al. 2021 **Incorporating domain knowledge into neural-guided search via *in situ* priors and constraints** *AutoML @ ICML 2021.* [Paper]()
@@ -326,14 +350,14 @@ Current DSO supports the following policy optimizers:
 Given a batch $\mathcal{T} = \{\tau^{(i)}\}_{i=1}^N$ of designs such that $\tau^{(i)} \sim p( \cdot | \theta)\ \forall 1 \leq i \leq N$:
 
 ```math
-\nabla_\theta J_\textrm{pg}(\theta; \varepsilon) \approx \frac{1}{\varepsilon N}\sum_{i=1}^N \left( R(\tau^{(i)}) - b \right) \cdot \mathbf{1}_{R(\tau^{(i)}) \geq \tilde{R}_\varepsilon(\theta) } 
+\nabla_\theta J_\textrm{pg}(\theta; \varepsilon) \approx \frac{1}{\varepsilon N}\sum_{i=1}^N \left( R(\tau^{(i)}) - b \right) \cdot \mathbf{1}_{R(\tau^{(i)}) \geq \tilde{R}_\varepsilon(\theta) }
 \nabla_\theta \log p(\tau^{(i)} | \theta)
 ```
-where 
+where
 ```math
-\tilde{R}_\varepsilon(\theta) = \textrm{Q}_{1-\varepsilon}(\mathcal{T} ) 
+\tilde{R}_\varepsilon(\theta) = \textrm{Q}_{1-\varepsilon}(\mathcal{T} )
 ```
-(the empirical quantile). 
+(the empirical quantile).
 
 ### Vanilla policy gradient
 
@@ -366,7 +390,7 @@ Configuration:
    training.baseline : "R_e",
    policy_optimizer.policy_optimizer_type : "pg"
 ```
- 
+
 ## Priority queue training
 Given a maximum reward priority queue (MRPQ):
 ```math
@@ -376,7 +400,7 @@ Given a maximum reward priority queue (MRPQ):
 ## Proximal policy optimization
 Given a batch $\mathcal{T} = \{\tau^{(i)}\}_{i=1}^N$ of designs such that $\tau^{(i)} \sim p( \cdot | \theta) \forall i$:
 
-For $1=1,\dots,K$ do: 
+For $1=1,\dots,K$ do:
 ```math
 \theta \leftarrow \theta + \alpha \nabla J_{\text{PPO}}
 ```
