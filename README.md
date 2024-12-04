@@ -17,9 +17,8 @@ pip install -U pip
 Finally, following the document,
 
 ```
-pip install --upgrade setuptools pip
-export CFLAGS="-I $(python -c "import numpy; print(numpy.get_include())") $CFLAGS" # Needed on Mac to prevent fatal error: 'numpy/arrayobject.h' file not found
-pip install -e ./dso # Install DSO package and core dependencies
+pip install -U setuptools
+pip install -e ./dso
 ```
 
 # Deep Symbolic Optimization
