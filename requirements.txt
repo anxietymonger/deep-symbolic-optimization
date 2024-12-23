@@ -1,12 +1,10 @@
 pytest
 cython
-numpy
+numpy<=1.19
 tensorflow==1.14
-numba
-sympy
+numba==0.53.1
+sympy==1.9
 pandas
 scikit-learn
 click
-mpi4py
 dataclasses
-

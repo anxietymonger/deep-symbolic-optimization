@@ -1,3 +1,26 @@
+# Reproduce
+
+Install python3.6 via pyenv.
+
+pyenv needs the following to build python.
+
+```
+sudo apt-get install build-essential zlib1g-dev libffi-dev libssl-dev libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev libncurses-dev tk-dev
+```
+
+Switch to python3.6 and upgrade pip, or llvmlite won't be installed.
+
+```
+pip install -U pip setuptools
+```
+
+Finally, following the document,
+
+```
+pip install -r requirements.txt
+pip install -e ./dso
+```
+
 # Deep symbolic regression
 
 Deep symbolic regression (DSR) is a deep learning algorithm for symbolic regression--the task of recovering tractable mathematical expressions from an input dataset. The package `dsr` contains the code for DSR, including a single-point, parallelized launch script (`dsr/run.py`), baseline genetic programming-based symbolic regression algorithm, and an sklearn-like interface for use with your own data.
