@@ -17,7 +17,6 @@ import commentjson as json
 
 from dso.task import set_task
 from dso.train import Trainer
-from dso.checkpoint import Checkpoint
 from dso.train_stats import StatsLogger
 from dso.prior import make_prior
 from dso.program import Program
@@ -79,7 +78,6 @@ class DeepSymbolicOptimizer():
         self.gp_controller = self.make_gp_controller()
         self.logger = self.make_logger()
         self.trainer = self.make_trainer()
-        self.checkpoint = self.make_checkpoint()
 
     def train_one_step(self, override=None):
         """
@@ -93,9 +91,6 @@ class DeepSymbolicOptimizer():
         # Run one step
         assert not self.trainer.done, "Training has already completed!"
         self.trainer.run_one_step(override)
-        
-        # Maybe save next checkpoint
-        self.checkpoint.update()
 
         # If complete, return summary
         if self.trainer.done:
@@ -154,7 +149,6 @@ class DeepSymbolicOptimizer():
         self.config_policy_optimizer = self.config["policy_optimizer"]
         self.config_gp_meld = self.config["gp_meld"]
         self.config_experiment = self.config["experiment"]
-        self.config_checkpoint = self.config["checkpoint"]
 
     def save_config(self):
         # Save the config file
@@ -220,11 +214,6 @@ class DeepSymbolicOptimizer():
                              self.output_file,
                              **self.config_logger)
         return logger
-
-    def make_checkpoint(self):
-        checkpoint = Checkpoint(self,
-                                **self.config_checkpoint)
-        return checkpoint
 
     def make_policy_optimizer(self):
         policy_optimizer = make_policy_optimizer(self.sess,
@@ -315,9 +304,3 @@ class DeepSymbolicOptimizer():
         self.save_path = save_path
 
         return output_file
-
-    def save(self, save_path=None):
-        self.checkpoint.save(save_path)
-
-    def load(self, load_path):
-        self.checkpoint.load(load_path)

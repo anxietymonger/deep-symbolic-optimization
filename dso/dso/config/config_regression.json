@@ -6,7 +6,7 @@
       // This can either be (1) the name of the benchmark dataset (see
       // benchmarks.csv for a list of supported benchmarks) or (2) a path to a
       // CSV file containing the data.
-      "dataset" : "Nguyen-1",
+      "dataset" : "Nguyen-7",
 
       // To customize a function set, edit this! See functions.py for a list of
       // supported functions. Note "const" will add placeholder constants that
