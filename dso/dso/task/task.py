@@ -21,7 +21,7 @@ class Task(ABC):
         Whether the reward function of the task is stochastic.
 
     task_type : str
-        Task type: regression, control, or binding.
+        Task type: regression.
 
     name : str
         Unique name for instance of this task.
@@ -156,7 +156,7 @@ class HierarchicalTask(Task):
 
         # Compute priors
         prior = self.prior(actions, parent, sibling, dangling, finished) # (?, n_choices)
-        
+
         # Combine observation dimensions
         next_obs = np.stack([action, parent, sibling, dangling], axis=1) # (?, 4)
         next_obs = next_obs.astype(np.float32)
@@ -199,8 +199,6 @@ def make_task(task_type, **config_task):
     task_type : str
         Type of task:
         "regression" : Symbolic regression task.
-        "control" : Episodic reinforcement learning task.
-        "binding": AbAg binding affinity optimization task.
 
     config_task : kwargs
         Task-specific arguments. See specifications of task_dict.
@@ -213,15 +211,9 @@ def make_task(task_type, **config_task):
     """
 
     # Lazy import of task factory functions
-    if task_type == 'binding':
-        from dso.task.binding.binding import BindingTask
-        task_class = BindingTask
-    elif task_type == "regression":
+    if task_type == "regression":
         from dso.task.regression.regression import RegressionTask
         task_class = RegressionTask
-    elif task_type == "control":
-        from dso.task.control.control import ControlTask
-        task_class = ControlTask
     else:
         # Custom task import
         task_class = import_custom_source(task_type)

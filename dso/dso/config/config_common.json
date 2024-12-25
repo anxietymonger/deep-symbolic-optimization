@@ -16,7 +16,7 @@
    // config_regression.json) for more info.
    "task" : {
 
-      // Choice of ["regression", "control"].
+      // Choice of ["regression"].
       "task_type" : null
    },
 

@@ -14,8 +14,6 @@ def get_base_config(task):
     task_config_file = None
     if task in ["regression", None]:
         task_config_file = "config_regression.json"
-    elif task in ["control"]:
-        task_config_file = "config_control.json"
     else:
         # Custom tasks use config_common.json.
         task_config_file = "config_common.json"
@@ -42,10 +40,6 @@ def load_config(config=None):
     except KeyError:
         task = "regression"
         print("WARNING: Task type not specified. Falling back to default task type '{}' to load config.".format(task))
-    try:
-        language_prior = user_config["prior"]["language_model"]["on"]
-    except KeyError:
-        language_prior = False
 
     # Load task-specific base config
     base_config = get_base_config(task)

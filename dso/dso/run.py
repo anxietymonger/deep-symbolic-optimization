@@ -20,13 +20,6 @@ def train_dso(config):
 
     print("\n== TRAINING SEED {} START ============".format(config["experiment"]["seed"]))
 
-    # For some reason, for the control task, the environment needs to be instantiated
-    # before creating the pool. Otherwise, gym.make() hangs during the pool initializer
-    if config["task"]["task_type"] == "control" and config["training"]["n_cores_batch"] > 1:
-        import gym
-        import dso.task.control # Registers custom and third-party environments
-        gym.make(config["task"]["env"])
-
     # Train the model
     model = DeepSymbolicOptimizer(deepcopy(config))
     start = time.time()
@@ -47,8 +40,6 @@ def print_summary(config, runs, messages):
     text += 'Task type            : {}\n'.format(config["task"]["task_type"])
     if config["task"]["task_type"] == "regression":
         text += 'Dataset              : {}\n'.format(config["task"]["dataset"])
-    elif config["task"]["task_type"] == "control":
-        text += 'Environment          : {}\n'.format(config["task"]["env"])
     text += 'Starting seed        : {}\n'.format(config["experiment"]["seed"])
     text += 'Runs                 : {}\n'.format(runs)
     if len(messages) > 0:
@@ -81,9 +72,6 @@ def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
         # For regression, --b overwrites config["task"]["dataset"]
         if task_type == "regression":
             config["task"]["dataset"] = benchmark
-        # For control, --b overwrites config["task"]["env"]
-        elif task_type == "control":
-            config["task"]["env"] = benchmark
         else:
             raise ValueError("--b is not supported for task {}.".format(task_type))
 
