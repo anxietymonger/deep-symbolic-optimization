@@ -18,18 +18,12 @@ def make_policy_optimizer(sess, policy, policy_optimizer_type, **config_policy_o
     if policy_optimizer_type == "pg":
         from dso.policy_optimizer.pg_policy_optimizer import PGPolicyOptimizer
         policy_optimizer_class = PGPolicyOptimizer
-    elif policy_optimizer_type == "pqt":
-        from dso.policy_optimizer.pqt_policy_optimizer import PQTPolicyOptimizer
-        policy_optimizer_class = PQTPolicyOptimizer
-    elif policy_optimizer_type == "ppo":
-        from dso.policy_optimizer.ppo_policy_optimizer import PPOPolicyOptimizer
-        policy_optimizer_class = PPOPolicyOptimizer
     else:
         # Custom policy import
         policy_optimizer_class = import_custom_source(policy_optimizer_type)
         assert issubclass(policy_optimizer_class, Policy), \
                 "Custom policy {} must subclass dso.policy.Policy.".format(policy_optimizer_class)
-        
+
     policy_optimizer = policy_optimizer_class(sess,
                                               policy,
                                               **config_policy_optimizer)
@@ -37,7 +31,7 @@ def make_policy_optimizer(sess, policy, policy_optimizer_type, **config_policy_o
     return policy_optimizer
 
 class PolicyOptimizer(ABC):
-    """Abstract class for a policy optimizer. A policy optimizer is an 
+    """Abstract class for a policy optimizer. A policy optimizer is an
     algorithm for optimizing the parameters of a parametrized policy.
 
     To define a new optimizer, inherit from this class and add the following
@@ -46,12 +40,12 @@ class PolicyOptimizer(ABC):
         _set_loss() : Define the \propto \log(p(\tau|\theta)) loss for the method
         _preppend_to_summary() : Add additional fields for the tensorflow summary
 
-    """    
+    """
 
-    def _init(self, 
+    def _init(self,
             sess : tf.Session,
             policy : Policy,
-            debug : int = 0,    
+            debug : int = 0,
             summary : bool = False,
             # Optimizer hyperparameters
             optimizer : str = 'adam',
@@ -86,7 +80,7 @@ class PolicyOptimizer(ABC):
         entropy_gamma : float or None
             Gamma in entropy decay. None (or
             equivalently, 1.0) turns off entropy decay.
-        '''    
+        '''
         self.sess = sess
         self.policy = policy
 
@@ -97,14 +91,14 @@ class PolicyOptimizer(ABC):
 
         # Need in self.summary
         self.summary = summary
-        
-        # Needed for make_batch_ph calls 
+
+        # Needed for make_batch_ph calls
         self.n_choices = Program.library.L
 
         # Placeholders, computed after instantiating expressions
         self.batch_size = tf.placeholder(dtype=tf.int32, shape=(), name="batch_size")
         self.baseline = tf.placeholder(dtype=tf.float32, shape=(), name="baseline")
-   
+
         # On policy batch
         self.sampled_batch_ph = make_batch_ph("sampled_batch", self.n_choices)
 
@@ -141,7 +135,7 @@ class PolicyOptimizer(ABC):
 
     def _setup_optimizer(self):
         """ Setup the optimizer
-        """    
+        """
         def make_optimizer(name, learning_rate):
             if name == "adam":
                 return tf.train.AdamOptimizer(learning_rate=learning_rate)
@@ -160,8 +154,8 @@ class PolicyOptimizer(ABC):
             # self.train_op = optimizer.minimize(self.loss)
         with tf.name_scope("grad_norm"):
             self.grads, _ = list(zip(*self.grads_and_vars))
-            self.norms = tf.global_norm(self.grads)  
-        
+            self.norms = tf.global_norm(self.grads)
+
         if self.debug >= 1:
             total_parameters = 0
             print("")
@@ -181,11 +175,11 @@ class PolicyOptimizer(ABC):
         Override if needed.
         """
         pass
-        
+
 
     def _setup_summary(self) -> None:
         """ Setup tensor flow summary
-        """    
+        """
         with tf.name_scope("summary"):
             tf.summary.scalar("entropy_loss", self.entropy_loss)
             tf.summary.scalar("total_loss", self.loss)
@@ -202,10 +196,10 @@ class PolicyOptimizer(ABC):
             self.summaries = tf.summary.merge_all()
 
 
-    def _setup_policy_optimizer(self, 
+    def _setup_policy_optimizer(self,
             sess : tf.Session,
             policy : Policy,
-            debug : int = 0,    
+            debug : int = 0,
             summary : bool = False,
             # Optimizer hyperparameters
             optimizer : str = 'adam',
@@ -214,7 +208,7 @@ class PolicyOptimizer(ABC):
             entropy_weight : float = 0.005,
             entropy_gamma : float = 1.0) -> None:
         """Setup of the policy optimizer.
-        """ 
+        """
         self._init(sess, policy, debug, summary, optimizer, learning_rate, entropy_weight, entropy_gamma)
         self._init_loss_with_entropy()
         self._set_loss() # Abstract method defined in derived class
@@ -223,12 +217,12 @@ class PolicyOptimizer(ABC):
             self._preppend_to_summary() # Abstract method defined in derived class
             self._setup_summary()
         else:
-            self.summaries = tf.no_op()        
+            self.summaries = tf.no_op()
 
 
     @abstractmethod
-    def train_step(self, 
-            baseline : np.ndarray, 
+    def train_step(self,
+            baseline : np.ndarray,
             sampled_batch : Batch) -> summaries:
         """Computes loss, trains model, and returns summaries.
 
