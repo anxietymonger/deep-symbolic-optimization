@@ -1,11 +1,10 @@
 """Defines main training loop for deep symbolic optimization."""
 
-import os
 import json
 import time
 from itertools import compress
 
-import tensorflow as tf
+import torch
 import numpy as np
 
 from dso.program import Program, from_tokens
@@ -13,12 +12,8 @@ from dso.utils import empirical_entropy, get_duration, weighted_quantile, pad_ac
 from dso.memory import Batch, make_queue
 from dso.variance import quantile_variance
 
-# Ignore TensorFlow warnings
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
-# Set TensorFlow seed
-tf.set_random_seed(0)
+torch.manual_seed(0)
 
 
 # Work for multiprocessing pool: compute reward
@@ -27,8 +22,9 @@ def work(p):
     r = p.r
     return p
 
+
 class Trainer():
-    def __init__(self, sess, policy, policy_optimizer, gp_controller, logger,
+    def __init__(self, policy, policy_optimizer, gp_controller, logger,
                  pool, n_samples=2000000, batch_size=1000, alpha=0.5,
                  epsilon=0.05, verbose=True, baseline="R_e",
                  b_jumpstart=False, early_stopping=True, debug=0,
@@ -40,9 +36,6 @@ class Trainer():
 
         Parameters
         ----------
-        sess : tf.Session
-            TensorFlow Session object.
-
         policy : dso.policy.Policy
             Parametrized probability distribution over discrete objects.
             Used to generate programs and compute loglikelihoods.
@@ -58,7 +51,7 @@ class Trainer():
 
         pool : multiprocessing.Pool or None
             Pool to parallelize reward computation. For the control task, each
-            worker should have its own TensorFlow model. If None, a Pool will be
+            worker should have its own model. If None, a Pool will be
             generated if n_cores_batch > 1.
 
         n_samples : int or None, optional
@@ -124,12 +117,7 @@ class Trainer():
 
         n_cores_batch : int, optional
             Not used
-
-
         """
-        self.sess = sess
-        # Initialize compute graph
-        self.sess.run(tf.global_variables_initializer())
 
         self.policy = policy
         self.policy_optimizer = policy_optimizer
@@ -147,14 +135,6 @@ class Trainer():
         self.debug = debug
         self.use_memory = use_memory
         self.memory_threshold = memory_threshold
-
-        if self.debug:
-            tvars = tf.trainable_variables()
-            def print_var_means():
-                tvars_vals = self.sess.run(tvars)
-                for var, val in zip(tvars, tvars_vals):
-                    print(var.name, "mean:", val.mean(), "var:", val.var())
-            self.print_var_means = print_var_means
 
         # Create the memory queue
         if self.use_memory:

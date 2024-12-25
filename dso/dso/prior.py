@@ -198,7 +198,6 @@ class JointPrior():
                 msg.append(repr(table))
             # msg.append("\nApplication will now exit.")
             print("\n".join(msg))
-            # os._exit(1) # Bypass tensorflow exception-handling
 
         final_combined_prior[unfinished] = combined_prior
 

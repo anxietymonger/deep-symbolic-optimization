@@ -1,15 +1,16 @@
 """Performs computations and file manipulations for train statistics logging purposes"""
 import os
-import numpy as np
-import tensorflow as tf
-from datetime import datetime
-import pandas as pd
-from dso.program import Program, from_tokens
-from dso.utils import is_pareto_efficient, empirical_entropy
-from itertools import compress
-from io import StringIO, BytesIO
 import shutil
+from io import StringIO, BytesIO
 from collections import defaultdict
+from itertools import compress
+
+import numpy as np
+import pandas as pd
+
+from dso.program import Program
+from dso.utils import is_pareto_efficient, empirical_entropy
+
 
 #These functions are defined globally so they are pickleable and can be used by Pool.map
 def hof_work(p):
@@ -23,19 +24,13 @@ class StatsLogger():
     """ Class responsible for dealing with output files of training statistics.
         It encapsulates all outputs to files."""
 
-    def __init__(self, sess, output_file, save_summary=False, save_all_iterations=False, hof=100,
+    def __init__(self, output_file, save_all_iterations=False, hof=100,
                  save_pareto_front=True, save_positional_entropy=False, save_top_samples_per_batch=0,
                  save_cache=False, save_cache_r_min=0.9, save_freq=1, save_token_count=False):
 
         """"
-        sess : tf.Session
-            TenorFlow Session object (used for generating summary files)
-
         output_file : str
             Filename to write results for each iteration.
-
-        save_summary : bool, optional
-            Whether to write TensorFlow summaries.
 
         save_all_iterations : bool, optional
             Whether to save statistics for all programs for each iteration.
@@ -64,9 +59,7 @@ class StatsLogger():
         save_token_count : bool
             Wether to count used tokens in each iteration
         """
-        self.sess = sess
         self.output_file = output_file
-        self.save_summary = save_summary
         self.save_all_iterations = save_all_iterations
         self.hof = hof
         self.save_pareto_front = save_pareto_front
@@ -162,17 +155,6 @@ class StatsLogger():
             self.top_samples_per_batch_output_file = None
             self.cache_output_file = None
             self.token_counter_output_file = None
-
-        # Create summary writer
-        if self.save_summary:
-            if self.output_file is not None:
-                summary_dir = "{}_summary".format(prefix)
-            else:
-                timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
-                summary_dir = os.path.join("summary", timestamp)
-            self.summary_writer = tf.summary.FileWriter(summary_dir, self.sess.graph)
-        else:
-            self.summary_writer = None
 
     def save_stats(self, r_full, l_full, actions_full, s_full, invalid_full, r,
                    l, actions, s, s_history, invalid, r_best, r_max, ewma,

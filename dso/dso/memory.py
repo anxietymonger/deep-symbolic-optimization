@@ -94,7 +94,6 @@ def get_samples(batch, key):
     return batch
 
 
-# Adapted from https://github.com/tensorflow/models/blob/1af55e018eebce03fb61bba9959a04672536107d/research/brain_coder/common/utils.py
 class ItemContainer(object):
     """Class for holding an item with its score.
 
@@ -217,7 +216,6 @@ class UniqueQueue(Queue):
         return (score, item, extra_data)
 
 
-# Adapted from https://github.com/tensorflow/models/blob/1af55e018eebce03fb61bba9959a04672536107d/research/brain_coder/common/utils.py
 class UniquePriorityQueue(Queue):
     """A priority queue where duplicates are not added.
 

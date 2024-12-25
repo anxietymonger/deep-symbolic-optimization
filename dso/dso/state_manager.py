@@ -1,18 +1,19 @@
 from abc import ABC, abstractmethod
 
-import tensorflow as tf
+import torch
+import torch.nn as nn
 
 from dso.program import Program
 
 
 class StateManager(ABC):
     """
-    An interface for handling the tf.Tensor inputs to the Policy.
+    An interface for handling the torch.Tensor inputs to the Policy.
     """
 
     def setup_manager(self, policy):
         """
-        Function called inside the policy to perform the needed initializations (e.g., if the tf context is needed)
+        Function called inside the policy to perform the needed initializations
         :param policy the policy class
         """
         self.policy = policy
@@ -21,7 +22,7 @@ class StateManager(ABC):
     @abstractmethod
     def get_tensor_input(self, obs):
         """
-        Convert an observation from a Task into a Tesnor input for the
+        Convert an observation from a Task into a Tensor input for the
         Policy, e.g. by performing one-hot encoding or embedding lookup.
 
         Parameters
@@ -31,7 +32,7 @@ class StateManager(ABC):
 
         Returns
         --------
-        input_ : tf.Tensor (dtype=tf.float32)
+        input_ : torch.Tensor (dtype=torch.float32)
             Tensor to be used as input to the Policy.
         """
         return
@@ -81,27 +82,7 @@ class HierarchicalStateManager(StateManager):
     def __init__(self, observe_parent=True, observe_sibling=True,
                  observe_action=False, observe_dangling=False, embedding=False,
                  embedding_size=8):
-        """
-        Parameters
-        ----------
-        observe_parent : bool
-            Observe the parent of the Token being selected?
-
-        observe_sibling : bool
-            Observe the sibling of the Token being selected?
-
-        observe_action : bool
-            Observe the previously selected Token?
-
-        observe_dangling : bool
-            Observe the number of dangling nodes?
-
-        embedding : bool
-            Use embeddings for categorical inputs?
-
-        embedding_size : int
-            Size of embeddings for each categorical input if embedding=True.
-        """
+        super().__init__()
         self.observe_parent = observe_parent
         self.observe_sibling = observe_sibling
         self.observe_action = observe_action
@@ -114,65 +95,70 @@ class HierarchicalStateManager(StateManager):
 
         self.embedding = embedding
         self.embedding_size = embedding_size
+        self.embedding_layers = nn.ModuleDict()
 
     def setup_manager(self, policy):
         super().setup_manager(policy)
         # Create embeddings if needed
         if self.embedding:
-            initializer = tf.random_uniform_initializer(minval=-1.0,
-                                                        maxval=1.0,
-                                                        seed=0)
-            with tf.variable_scope("embeddings", initializer=initializer):
-                if self.observe_action:
-                    self.action_embeddings = tf.get_variable("action_embeddings",
-                                                             [self.library.n_action_inputs, self.embedding_size],
-                                                             trainable=True)
-                if self.observe_parent:
-                    self.parent_embeddings = tf.get_variable("parent_embeddings",
-                                                             [self.library.n_parent_inputs, self.embedding_size],
-                                                             trainable=True)
-                if self.observe_sibling:
-                    self.sibling_embeddings = tf.get_variable("sibling_embeddings",
-                                                              [self.library.n_sibling_inputs, self.embedding_size],
-                                                              trainable=True)
+            if self.observe_action:
+                self.embedding_layers['action'] = nn.Embedding(
+                    self.library.n_action_inputs, self.embedding_size)
+            if self.observe_parent:
+                self.embedding_layers['parent'] = nn.Embedding(
+                    self.library.n_parent_inputs, self.embedding_size)
+            if self.observe_sibling:
+                self.embedding_layers['sibling'] = nn.Embedding(
+                    self.library.n_sibling_inputs, self.embedding_size)
+
+            # Initialize embeddings with uniform distribution
+            for embedding in self.embedding_layers.values():
+                nn.init.uniform_(embedding.weight, -1.0, 1.0)
 
     def get_tensor_input(self, obs):
         observations = []
-        unstacked_obs = tf.unstack(obs, axis=1)
+        # Convert obs to PyTorch tensor if it's not already
+        if not isinstance(obs, torch.Tensor):
+            obs = torch.tensor(obs, dtype=torch.float32)
+
+        # Unstack along dimension 1
+        unstacked_obs = torch.unbind(obs, dim=1)
         action, parent, sibling, dangling = unstacked_obs[:4]
 
-        # Cast action, parent, sibling to int for embedding_lookup or one_hot
-        action = tf.cast(action, tf.int32)
-        parent = tf.cast(parent, tf.int32)
-        sibling = tf.cast(sibling, tf.int32)
+        # Cast to int32 instead of long (int64)
+        action = action.to(torch.int32)
+        parent = parent.to(torch.int32)
+        sibling = sibling.to(torch.int32)
 
-        # Action, parent, and sibling inputs are either one-hot or embeddings
         if self.observe_action:
             if self.embedding:
-                x = tf.nn.embedding_lookup(self.action_embeddings, action)
+                x = self.embedding_layers['action'](action)
             else:
-                x = tf.one_hot(action, depth=self.library.n_action_inputs)
+                x = torch.nn.functional.one_hot(action, self.library.n_action_inputs, dtype=torch.float32)
             observations.append(x)
+
         if self.observe_parent:
             if self.embedding:
-                x = tf.nn.embedding_lookup(self.parent_embeddings, parent)
+                x = self.embedding_layers['parent'](parent)
             else:
-                x = tf.one_hot(parent, depth=self.library.n_parent_inputs)
+                x = torch.nn.functional.one_hot(parent, self.library.n_parent_inputs, dtype=torch.float32)
             observations.append(x)
+
         if self.observe_sibling:
             if self.embedding:
-                x = tf.nn.embedding_lookup(self.sibling_embeddings, sibling)
+                x = self.embedding_layers['sibling'](sibling)
             else:
-                x = tf.one_hot(sibling, depth=self.library.n_sibling_inputs)
+                x = torch.nn.functional.one_hot(sibling, self.library.n_sibling_inputs, dtype=torch.float32)
             observations.append(x)
 
-        # Dangling input is just the value of dangling
         if self.observe_dangling:
-            x = tf.expand_dims(dangling, axis=-1)
+            x = dangling.unsqueeze(-1)
             observations.append(x)
 
-        input_ = tf.concat(observations, -1)
-        # possibly concatenates additional observations (e.g., bert embeddings)
+        input_ = torch.cat(observations, dim=-1)
+        # Concatenate additional observations if they exist
         if len(unstacked_obs) > 4:
-            input_ = tf.concat([input_, tf.stack(unstacked_obs[4:], axis=-1)], axis=-1)
+            additional_obs = torch.stack(unstacked_obs[4:], dim=-1)
+            input_ = torch.cat([input_, additional_obs], dim=-1)
+
         return input_
