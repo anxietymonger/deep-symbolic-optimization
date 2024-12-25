@@ -42,7 +42,7 @@ class Trainer():
         ----------
         sess : tf.Session
             TensorFlow Session object.
-        
+
         policy : dso.policy.Policy
             Parametrized probability distribution over discrete objects.
             Used to generate programs and compute loglikelihoods.
@@ -156,17 +156,6 @@ class Trainer():
                     print(var.name, "mean:", val.mean(), "var:", val.var())
             self.print_var_means = print_var_means
 
-        # Create the priority_queue if needed
-        if hasattr(self.policy_optimizer, 'pqt_k'):
-            from dso.policy_optimizer.pqt_policy_optimizer import PQTPolicyOptimizer
-            assert type(self.policy_optimizer) == PQTPolicyOptimizer
-            # Create the priority queue
-            k = self.policy_optimizer.pqt_k
-            if k is not None and k > 0:
-                self.priority_queue = make_queue(priority=True, capacity=k)
-        else:
-            self.priority_queue = None
-
         # Create the memory queue
         if self.use_memory:
             assert self.epsilon is not None and self.epsilon < 1.0, \
@@ -231,7 +220,7 @@ class Trainer():
         if override is None:
             # Sample batch of Programs from the Controller
             actions, obs, priors = self.policy.sample(self.batch_size)
-            programs = [from_tokens(a) for a in actions]            
+            programs = [from_tokens(a) for a in actions]
         else:
             # Train on the given batch of Programs
             actions, obs, priors, programs = override
@@ -394,15 +383,7 @@ class Trainer():
                               lengths=lengths, rewards=r, on_policy=on_policy)
 
         # Update and sample from the priority queue
-        if self.priority_queue is not None:
-            self.priority_queue.push_best(sampled_batch, programs)
-            pqt_batch = self.priority_queue.sample_batch(self.policy_optimizer.pqt_batch_size)
-            # Train the policy
-            summaries = self.policy_optimizer.train_step(b, sampled_batch, pqt_batch)
-        else:
-            pqt_batch = None
-            # Train the policy
-            summaries = self.policy_optimizer.train_step(b, sampled_batch)
+        summaries = self.policy_optimizer.train_step(b, sampled_batch)
 
         # Walltime calculation for the iteration
         iteration_walltime = time.time() - start_time

@@ -21,7 +21,7 @@ from dso.train_stats import StatsLogger
 from dso.prior import make_prior
 from dso.program import Program
 from dso.config import load_config
-from dso.tf_state_manager import make_state_manager
+from dso.state_manager import make_state_manager
 
 from dso.policy.policy import make_policy
 from dso.policy_optimizer import make_policy_optimizer
