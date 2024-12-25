@@ -1,24 +1,25 @@
 from abc import ABC, abstractmethod
 
-from typing import Tuple, TypeVar
+from typing import Tuple
 
-import tensorflow as tf
-import dso
+import torch
+import torch.nn as nn
 from dso.prior import LengthConstraint
-from dso.program import Program
 from dso.utils import import_custom_source
 from dso.prior import JointPrior
 from dso.state_manager import StateManager
 from dso.memory import Batch
 
-# Used for function annotations using the type system
-actions = tf.TensorArray
-obs     = tf.TensorArray
-priors  = tf.TensorArray
-neglogp = tf.TensorArray
-entropy = tf.TensorArray
 
-def make_policy(sess, prior, state_manager, policy_type, **config_policy):
+# Used for function annotations using the type system
+actions = torch.Tensor
+obs     = torch.Tensor
+priors  = torch.Tensor
+neglogp = torch.Tensor
+entropy = torch.Tensor
+
+
+def make_policy(prior, state_manager, policy_type, **config_policy):
     """Factory function for Policy object."""
 
     if policy_type == "rnn":
@@ -30,30 +31,24 @@ def make_policy(sess, prior, state_manager, policy_type, **config_policy):
         assert issubclass(policy_class, Policy), \
                 "Custom policy {} must subclass dso.policy.Policy.".format(policy_class)
 
-    policy = policy_class(sess,
-                          prior,
-                          state_manager,
-                          **config_policy)
+    policy = policy_class(prior, state_manager, **config_policy)
 
     return policy
 
-class Policy(ABC):
+
+class Policy(nn.Module, ABC):
     """Abstract class for a policy. A policy is a parametrized probability
     distribution over discrete objects. DSO algorithms optimize the parameters
     of this distribution to generate discrete objects with high rewards.
     """
 
     def __init__(self,
-            sess : tf.Session,
             prior : JointPrior,
             state_manager : StateManager,
             debug : int = 0,
             max_length : int = 30) -> None:
-        '''Parameters
+        """Parameters
         ----------
-        sess : tf.Session
-            TenorFlow Session object.
-
         prior : dso.prior.JointPrior
             JointPrior object used to adjust probabilities during sampling.
 
@@ -67,8 +62,8 @@ class Policy(ABC):
         max_length : int or None
             Maximum sequence length. This will be overridden if a LengthConstraint
             with a maximum length is part of the prior.
-        '''
-        self.sess = sess
+        """
+        super().__init__()
         self.prior = prior
         self.state_manager = state_manager
         self.debug = debug
@@ -107,8 +102,8 @@ class Policy(ABC):
                   "LengthConstraint ({}).".format(max_length, self.max_length))
 
     @abstractmethod
-    def _setup_tf_model(self, **kwargs) -> None:
-        """"Setup the TensorFlow graph(s).
+    def _setup_model(self, **kwargs) -> None:
+        """"Setup the model.
 
         Returns
         -------
@@ -128,7 +123,7 @@ class Policy(ABC):
         Returns
         -------
         neglogp, entropy :
-            Tensorflow tensors
+            Torch tensors
         """
         raise NotImplementedError
 

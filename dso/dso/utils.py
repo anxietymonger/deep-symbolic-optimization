@@ -264,8 +264,8 @@ def import_custom_source(import_source):
 
 def pad_action_obs_priors(actions, obs, priors, pad_length):
     """
-    Will pad action, obs, priors with zeros.  
-    
+    Will pad action, obs, priors with zeros.
+
     Parameters
     ----------
         actions : np array
@@ -287,48 +287,9 @@ def pad_action_obs_priors(actions, obs, priors, pad_length):
     """
     assert isinstance(pad_length,int)
     assert pad_length >= 0
-    
+
     actions = np.pad(actions, ((0,0),(0,pad_length)), 'constant', constant_values=((0,0),(0,0)))
     obs = [ np.pad(o, ((0,0),(0,pad_length)), 'constant', constant_values=((0,0),(0,0))) for o in obs ]
     priors = np.pad(priors, ((0,0),(0,pad_length),(0,0)), 'constant', constant_values=((0,0),(0,0),(0,0)))
 
     return actions, obs, priors
-
-
-def make_batch_ph(name : str, n_choices : int):
-    """
-    Generates dictionary containing placeholders needed for a batch of sequences.
-    
-    Parameters
-    ----------
-        names : str
-            Name of tensorflow scope for this batch
-
-        n_choices : int
-            Number of choices in priors
-
-    Returns
-    -------
-        batch_ph : dict
-            Dictionary of placeholders
-    """
-
-    # Lazy import
-    import tensorflow as tf
-    from dso.memory import Batch
-    from dso.program import Program
-
-    with tf.name_scope(name):
-        batch_ph = {
-            "actions": tf.placeholder(tf.int32, [None, None]),
-            "obs": tf.placeholder(tf.float32, [None, Program.task.OBS_DIM, None]),
-            "priors": tf.placeholder(tf.float32, [None, None, n_choices]),
-            "lengths": tf.placeholder(tf.int32, [None, ]),
-            "rewards": tf.placeholder(tf.float32, [None], name="r"),
-            "on_policy": tf.placeholder(tf.int32, [None, ])
-         }
-        batch_ph = Batch(**batch_ph)
-    return batch_ph
-
-
-

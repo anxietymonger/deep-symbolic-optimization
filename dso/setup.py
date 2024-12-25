@@ -13,7 +13,6 @@ required = [
     "protobuf==3.19.6",
     "cython",
     "numpy<=1.19",
-    "tensorflow==1.14",
     "numba==0.53.1",
     "sympy==1.9",
     "pandas",

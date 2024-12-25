@@ -1,7 +1,7 @@
 """Core deep symbolic optimizer construct."""
 
 import warnings
-warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 import os
 import zlib
@@ -49,9 +49,9 @@ class DeepSymbolicOptimizer():
 
     def __init__(self, config=None):
         self.set_config(config)
+        self.is_first_step = True
 
     def setup(self):
-
         # Clear the cache and reset the compute graph
         Program.clear_cache()
 
@@ -78,8 +78,9 @@ class DeepSymbolicOptimizer():
         """
 
         # Setup the model
-        if self.sess is None:
+        if self.is_first_step:
             self.setup()
+            self.is_first_step = False
 
         # Run one step
         assert not self.trainer.done, "Training has already completed!"
@@ -146,8 +147,7 @@ class DeepSymbolicOptimizer():
     def save_config(self):
         # Save the config file
         if self.output_file is not None:
-            path = os.path.join(self.config_experiment["save_path"],
-                                "config.json")
+            path = os.path.join(self.config_experiment["save_path"], "config.json")
             # With run.py, config.json may already exist. To avoid race
             # conditions, only record the starting seed. Use a backup seed
             # in case this worker's seed differs.
@@ -156,7 +156,7 @@ class DeepSymbolicOptimizer():
                 if "starting_seed" in self.config_experiment:
                     self.config_experiment["seed"] = self.config_experiment["starting_seed"]
                     del self.config_experiment["starting_seed"]
-                with open(path, 'w') as f:
+                with open(path, "w") as f:
                     json.dump(self.config, f, indent=3)
             self.config_experiment["seed"] = backup_seed
 
@@ -202,30 +202,21 @@ class DeepSymbolicOptimizer():
         return trainer
 
     def make_logger(self):
-        logger = StatsLogger(self.sess,
-                             self.output_file,
-                             **self.config_logger)
+        logger = StatsLogger(self.output_file, **self.config_logger)
         return logger
 
     def make_policy_optimizer(self):
-        policy_optimizer = make_policy_optimizer(self.sess,
-                                                 self.policy,
-                                                 **self.config_policy_optimizer)
+        policy_optimizer = make_policy_optimizer(self.policy, **self.config_policy_optimizer)
         return policy_optimizer
 
     def make_policy(self):
-        policy = make_policy(self.sess,
-                             self.prior,
-                             self.state_manager,
-                             **self.config_policy)
+        policy = make_policy(self.prior, self.state_manager, **self.config_policy)
         return policy
 
     def make_gp_controller(self):
         if self.config_gp_meld.pop("run_gp_meld", False):
             from dso.gp.gp_controller import GPController
-            gp_controller = GPController(self.prior,
-                                         self.config_prior,
-                                         **self.config_gp_meld)
+            gp_controller = GPController(self.prior, self.config_prior, **self.config_gp_meld)
         else:
             gp_controller = None
         return gp_controller
@@ -250,9 +241,7 @@ class DeepSymbolicOptimizer():
             if n_cores_batch == -1:
                 n_cores_batch = cpu_count()
             if n_cores_batch > 1:
-                pool = Pool(n_cores_batch,
-                            initializer=set_task,
-                            initargs=(self.config_task,))
+                pool = Pool(n_cores_batch, initializer=set_task, initargs=(self.config_task,))
 
         # Set the Task for the parent process
         set_task(self.config_task)
@@ -279,7 +268,7 @@ class DeepSymbolicOptimizer():
         if self.config_experiment["exp_name"] is None:
             save_path = os.path.join(
                 self.config_experiment["logdir"],
-                '_'.join([task_name, timestamp]))
+                "_".join([task_name, timestamp]))
         else:
             save_path = os.path.join(
                 self.config_experiment["logdir"],
@@ -290,8 +279,7 @@ class DeepSymbolicOptimizer():
         os.makedirs(save_path, exist_ok=True)
 
         seed = self.config_experiment["seed"]
-        output_file = os.path.join(save_path,
-                                   "dso_{}_{}.csv".format(task_name, seed))
+        output_file = os.path.join(save_path, "dso_{}_{}.csv".format(task_name, seed))
 
         self.save_path = save_path
 

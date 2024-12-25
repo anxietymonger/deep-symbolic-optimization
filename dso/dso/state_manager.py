@@ -102,13 +102,13 @@ class HierarchicalStateManager(StateManager):
         # Create embeddings if needed
         if self.embedding:
             if self.observe_action:
-                self.embedding_layers['action'] = nn.Embedding(
+                self.embedding_layers["action"] = nn.Embedding(
                     self.library.n_action_inputs, self.embedding_size)
             if self.observe_parent:
-                self.embedding_layers['parent'] = nn.Embedding(
+                self.embedding_layers["parent"] = nn.Embedding(
                     self.library.n_parent_inputs, self.embedding_size)
             if self.observe_sibling:
-                self.embedding_layers['sibling'] = nn.Embedding(
+                self.embedding_layers["sibling"] = nn.Embedding(
                     self.library.n_sibling_inputs, self.embedding_size)
 
             # Initialize embeddings with uniform distribution
@@ -126,29 +126,29 @@ class HierarchicalStateManager(StateManager):
         action, parent, sibling, dangling = unstacked_obs[:4]
 
         # Cast to int32 instead of long (int64)
-        action = action.to(torch.int32)
-        parent = parent.to(torch.int32)
-        sibling = sibling.to(torch.int32)
+        action = action.to(torch.int64)
+        parent = parent.to(torch.int64)
+        sibling = sibling.to(torch.int64)
 
         if self.observe_action:
             if self.embedding:
-                x = self.embedding_layers['action'](action)
+                x = self.embedding_layers["action"](action)
             else:
-                x = torch.nn.functional.one_hot(action, self.library.n_action_inputs, dtype=torch.float32)
+                x = torch.nn.functional.one_hot(action, self.library.n_action_inputs).to(torch.float32)
             observations.append(x)
 
         if self.observe_parent:
             if self.embedding:
-                x = self.embedding_layers['parent'](parent)
+                x = self.embedding_layers["parent"](parent)
             else:
-                x = torch.nn.functional.one_hot(parent, self.library.n_parent_inputs, dtype=torch.float32)
+                x = torch.nn.functional.one_hot(parent, self.library.n_parent_inputs).to(torch.float32)
             observations.append(x)
 
         if self.observe_sibling:
             if self.embedding:
-                x = self.embedding_layers['sibling'](sibling)
+                x = self.embedding_layers["sibling"](sibling)
             else:
-                x = torch.nn.functional.one_hot(sibling, self.library.n_sibling_inputs, dtype=torch.float32)
+                x = torch.nn.functional.one_hot(sibling, self.library.n_sibling_inputs).to(torch.float32)
             observations.append(x)
 
         if self.observe_dangling:

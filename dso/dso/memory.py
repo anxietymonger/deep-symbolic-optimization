@@ -5,29 +5,11 @@ from collections import namedtuple
 
 import numpy as np
 
-from dso.program import from_tokens
 from dso.utils import pad_action_obs_priors
 
 
 Batch = namedtuple(
     "Batch", ["actions", "obs", "priors", "lengths", "rewards", "on_policy"])
-
-
-# TBD: This should be member function of Batch class
-def save_batch(B, save_path):
-    """Save Batch to file."""
-
-    with open(save_path, "wb") as f:
-        np.savez(f, **dict(B._asdict()))
-
-
-# TBD: This should be class function of Batch class
-def load_batch(save_path):
-    """Load Batch from file."""
-
-    B = np.load(save_path)
-    B = Batch(**B)
-    return B
 
 
 def make_queue(policy=None, priority=False, capacity=np.inf, seed=0):
@@ -384,18 +366,3 @@ class ProgramQueueMixin():
 
         r = [container.extra_data.rewards for container in self.heap]
         return r
-
-    def save(self, save_path):
-        """Save the contents of the queue to file."""
-
-        B = self.to_batch()
-        save_batch(B, save_path)
-
-    def load(self, load_path):
-        """Load the contents of the queue from file."""
-
-        B = load_batch(load_path)
-        programs = [from_tokens(np.array(tokens, dtype=np.int32)) for tokens in B.actions]
-        for p, r in zip(programs, B.rewards):
-            p.r = r
-        self.push_batch(B, programs)

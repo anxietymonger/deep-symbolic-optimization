@@ -133,32 +133,43 @@ class HierarchicalTask(Task):
         super(Task).__init__()
 
     def get_next_obs(self, actions, obs, already_finished):
+        """
+        Parameters
+        ----------
+        actions : np.ndarray (dtype=np.int32)
+            Actions selected so far.
+            If 1D array (batch_size,), will be reshaped to (batch_size, 1)
+            If 2D array (batch_size, current_length), used as-is
+        """
+        # Ensure actions is always 2D (batch_size, seq_length)
+        if actions.ndim == 1:
+            actions = actions.reshape(-1, 1)
 
-        dangling = obs[:, 3] # Shape of obs: (?, 4)
-        action = actions[:, -1] # Current action
+        action = actions[:, -1]  # Get last action from history
+        dangling = obs[:, 3]
         lib = self.library
 
-        # Compute parents and siblings
-        parent, sibling = parents_siblings(actions,
-                                           arities=lib.arities,
-                                           parent_adjust=lib.parent_adjust,
-                                           empty_parent=lib.EMPTY_PARENT,
-                                           empty_sibling=lib.EMPTY_SIBLING)
+        # Compute parents and siblings using full action history
+        parent, sibling = parents_siblings(
+            actions,
+            arities=lib.arities,
+            parent_adjust=lib.parent_adjust,
+            empty_parent=lib.EMPTY_PARENT,
+            empty_sibling=lib.EMPTY_SIBLING
+        )
 
         # Compute dangling
         dangling += lib.arities[action] - 1
 
         # Compute finished
-        just_finished = (dangling == 0) # Trees that completed _this_ time step
-        # [batch_size]
-        finished = np.logical_or(just_finished,
-                                 already_finished)
+        just_finished = (dangling == 0)
+        finished = np.logical_or(just_finished, already_finished)
 
         # Compute priors
-        prior = self.prior(actions, parent, sibling, dangling, finished) # (?, n_choices)
+        prior = self.prior(actions, parent, sibling, dangling, finished)
 
         # Combine observation dimensions
-        next_obs = np.stack([action, parent, sibling, dangling], axis=1) # (?, 4)
+        next_obs = np.stack([action, parent, sibling, dangling], axis=1)
         next_obs = next_obs.astype(np.float32)
 
         return next_obs, prior, finished

@@ -1,244 +1,94 @@
 """Controller used to generate distribution over hierarchical, variable-length objects."""
-import tensorflow as tf
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 
 from dso.program import Program
 from dso.program import _finish_tokens
-from dso.memory import Batch
-
 from dso.policy import Policy
-from dso.utils import make_batch_ph
 
-class LinearWrapper(tf.contrib.rnn.LayerRNNCell):
-    """RNNCell wrapper that adds a linear layer to the output.
 
-    See: https://github.com/tensorflow/models/blob/master/research/brain_coder/single_task/pg_agent.py
-    """
+class LinearWrapper(nn.Module):
+    """RNN wrapper that adds a linear layer to the output."""
 
-    def __init__(self, cell, output_size):
-        self.cell = cell
-        self._output_size = output_size
+    def __init__(self, rnn_cell, output_size):
+        super().__init__()
+        self.rnn_cell = rnn_cell
+        self.linear = nn.Linear(rnn_cell.hidden_size, output_size)
 
-    def __call__(self, inputs, state, scope=None):
-        with tf.variable_scope(type(self).__name__):
-            outputs, state = self.cell(inputs, state, scope=scope)
-            logits = tf.layers.dense(outputs, units=self._output_size)
+    def forward(self, x, hidden):
+        output, hidden = self.rnn_cell(x, hidden)
+        return self.linear(output), hidden
 
-        return logits, state
-
-    @property
-    def output_size(self):
-        return self._output_size
-
-    @property
-    def state_size(self):
-        return self.cell.state_size
-
-    def zero_state(self, batch_size, dtype):
-        return self.cell.zero_state(batch_size, dtype)
-
-def safe_cross_entropy(p, logq, axis=-1):
-    """Compute p * logq safely, by susbstituting
-    logq[index] = 1 for index such that p[index] == 0
-    """
-    # Put 1 where p == 0. In the case, q =p, logq = -inf and this
-    # might procude numerical errors below
-    safe_logq = tf.where(tf.equal(p, 0.), tf.ones_like(logq), logq)
-    # Safely compute the product
-    return - tf.reduce_sum(p * safe_logq, axis)
+def safe_cross_entropy(p, logq, dim=-1):
+    """Compute p * logq safely."""
+    # Handle cases where p is 0
+    safe_logq = torch.where(p == 0, torch.ones_like(logq), logq)
+    return -torch.sum(p * safe_logq, dim=dim)
 
 class RNNPolicy(Policy):
-    """Recurrent neural network (RNN) policy used to generate expressions.
-
-    Specifically, the RNN outputs a distribution over pre-order traversals of
-    symbolic expression trees.
-
-    Parameters
-    ----------
-    action_prob_lowerbound: float
-        Lower bound on probability of each action.
-
-    cell : str
-        Recurrent cell to use. Supports 'lstm' and 'gru'.
-
-    max_attempts_at_novel_batch: int
-        maximum number of repetitions of sampling to get b new samples
-        during a call of policy.sample(b)
-
-    num_layers : int
-        Number of RNN layers.
-
-    num_units : int or list of ints
-        Number of RNN cell units in each of the RNN's layers. If int, the value
-        is repeated for each layer. 
-
-    sample_novel_batch: bool
-        if True, then a call to policy.sample(b) attempts to produce b samples
-        that are not contained in the cache
-
-    initiailizer : str
-        Initializer for the recurrent cell. Supports 'zeros' and 'var_scale'.
-        
-    """
-    def __init__(self, sess, prior, state_manager, 
-                 debug = 0,
-                 max_length = 30,
-                 action_prob_lowerbound = 0.0,
-                 max_attempts_at_novel_batch = 10,
-                 sample_novel_batch = False,
-                 # RNN cell hyperparameters
-                 cell ='lstm',
+    def __init__(self, prior, state_manager,
+                 debug=0,
+                 max_length=30,
+                 action_prob_lowerbound=0.0,
+                 max_attempts_at_novel_batch=10,
+                 sample_novel_batch=False,
+                 cell="lstm",
                  num_layers=1,
                  num_units=32,
-                 initializer='zeros'):
-        super().__init__(sess, prior, state_manager, debug, max_length)
-        
-        assert 0 <= action_prob_lowerbound  and action_prob_lowerbound <= 1
+                 initializer="zeros"):
+        super().__init__(prior, state_manager, debug, max_length)
+
         self.action_prob_lowerbound = action_prob_lowerbound
-
-        # len(tokens) in library
         self.n_choices = Program.library.L
-
-        # Placeholders, computed after instantiating expressions
-        self.batch_size = tf.placeholder(dtype=tf.int32, shape=(), name="batch_size")
-
-        # setup model
-        self._setup_tf_model(cell, num_layers, num_units, initializer)
-
         self.max_attempts_at_novel_batch = max_attempts_at_novel_batch
         self.sample_novel_batch = sample_novel_batch
 
-    def _setup_tf_model(
-            self, 
-            cell ='lstm',
-            num_layers=1,
-            num_units=32,
-            initializer='zeros'):
+        # Move to PyTorch device
+        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu")
+        self._setup_model(cell, num_layers, num_units, initializer)
+        self.to(self.device)
 
-        # Defined in super class
-        # This can be susbtituted below
-        n_choices = self.n_choices
-        prior = self.prior
-        state_manager = self.state_manager
-        max_length = self.max_length
+    def _setup_model(self, cell="lstm", num_layers=1, num_units=32, initializer="zeros"):
+        if isinstance(num_units, int):
+            num_units = [num_units] * num_layers
 
-        # Build RNN policy
-        with tf.name_scope("controller"):
+        # Get input size from state manager's processed state
+        dummy_obs = torch.zeros(1, Program.task.OBS_DIM, device=self.device)
+        processed_obs = self.state_manager.process_state(dummy_obs)
+        input_size = self.state_manager.get_tensor_input(processed_obs).size(-1)
 
-            def make_initializer(name):
-                if name == "zeros":
-                    return tf.zeros_initializer()
-                if name == "var_scale":
-                    return tf.contrib.layers.variance_scaling_initializer(
-                            factor=0.5, mode='FAN_AVG', uniform=True, seed=0)
-                raise ValueError("Did not recognize initializer '{}'".format(name))
+        # Create recurrent cell
+        if cell == "lstm":
+            rnn = nn.LSTM(input_size=input_size,
+                         hidden_size=num_units[0],
+                         num_layers=num_layers,
+                         batch_first=True)
+        elif cell == "gru":
+            rnn = nn.GRU(input_size=input_size,
+                        hidden_size=num_units[0],
+                        num_layers=num_layers,
+                        batch_first=True)
+        else:
+            raise ValueError(f"Unsupported cell type: {cell}")
 
-            def make_cell(name, num_units, initializer):
-                if name == 'lstm':
-                    return tf.nn.rnn_cell.LSTMCell(num_units, initializer=initializer)
-                if name == 'gru':
-                    return tf.nn.rnn_cell.GRUCell(num_units, kernel_initializer=initializer, bias_initializer=initializer)
-                raise ValueError("Did not recognize cell type '{}'".format(name))
+        self.rnn = LinearWrapper(rnn, self.n_choices)
 
-            # Create recurrent cell
-            if isinstance(num_units, int):
-                num_units = [num_units] * num_layers
-            initializer = make_initializer(initializer)
-            cell = tf.contrib.rnn.MultiRNNCell(
-                    [make_cell(cell, n, initializer=initializer) for n in num_units])
-            cell = LinearWrapper(cell=cell, output_size=n_choices)
+        # Initialize weights
+        if initializer == "zeros":
+            for p in self.parameters():
+                if len(p.shape) > 1:
+                    nn.init.zeros_(p)
+        elif initializer == "var_scale":
+            for p in self.parameters():
+                if len(p.shape) > 1:
+                    nn.init.kaiming_uniform_(p, a=np.sqrt(5))
+        else:
+            raise ValueError(f"Unsupported initializer: {initializer}")
 
-            # Set the cell attribute needed for make_neglog_probs_and_entropy
-            self.cell = cell
-
-            task = Program.task
-            initial_obs = task.reset_task(prior)
-            state_manager.setup_manager(self)
-            initial_obs = tf.broadcast_to(initial_obs, [self.batch_size, len(initial_obs)]) # (?, obs_dim)
-            initial_obs = state_manager.process_state(initial_obs)
-
-            # Get initial prior
-            initial_prior = self.prior.initial_prior()
-            initial_prior = tf.constant(initial_prior, dtype=tf.float32)
-            initial_prior = tf.broadcast_to(initial_prior, [self.batch_size, n_choices])
-
-            def loop_fn(time, cell_output, cell_state, loop_state):
-
-                if cell_output is None: # time == 0
-                    finished = tf.zeros(shape=[self.batch_size], dtype=tf.bool)
-                    obs = initial_obs
-                    next_input = state_manager.get_tensor_input(obs)
-                    next_cell_state = cell.zero_state(batch_size=self.batch_size, dtype=tf.float32) # 2-tuple, each shape (?, num_units)
-                    emit_output = None
-                    actions_ta = tf.TensorArray(dtype=tf.int32, size=0, dynamic_size=True, clear_after_read=False) # Read twice
-                    obs_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True, clear_after_read=True)
-                    priors_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True, clear_after_read=True)
-                    prior = initial_prior
-                    #lengths = tf.ones(shape=[self.batch_size], dtype=tf.int32)
-                    next_loop_state = (
-                        actions_ta,
-                        obs_ta,
-                        priors_ta,
-                        obs,
-                        prior,
-                        finished)
-                else:
-                    actions_ta, obs_ta, priors_ta, obs, prior, finished = loop_state
-                    # apply bound to logits before applying prior, so that hard constraints
-                    # are respected
-                    if self.action_prob_lowerbound != 0.0:
-                        cell_output = self.apply_action_prob_lowerbound(cell_output)
-                    logits = cell_output + prior
-                    next_cell_state = cell_state
-                    emit_output = logits
-
-                    # Sample action
-                    action = tf.random.categorical(logits=logits, num_samples=1,
-                                                   dtype=tf.int32, seed=1)[:, 0]
-                    next_actions_ta = actions_ta.write(time - 1, action) # Write chosen actions
-                    actions = tf.transpose(next_actions_ta.stack())  # Shape: (?, time)
-
-                    # Compute obs and prior
-                    next_obs, next_prior, next_finished = tf.py_func(func=task.get_next_obs,
-                                                                     inp=[actions, obs, finished],
-                                                                     Tout=[tf.float32, tf.float32, tf.bool])
-                    next_prior.set_shape([None, n_choices])
-                    next_obs.set_shape([None, task.OBS_DIM])
-                    next_finished.set_shape([None])
-                    next_obs = state_manager.process_state(next_obs)
-                    next_input = state_manager.get_tensor_input(next_obs)
-                    next_obs_ta = obs_ta.write(time - 1, obs) # Write OLD obs
-                    next_priors_ta = priors_ta.write(time - 1, prior) # Write OLD prior
-                    finished = next_finished = tf.logical_or(
-                        next_finished,
-                        time >= max_length)
-                    next_loop_state = (next_actions_ta,
-                                       next_obs_ta,
-                                       next_priors_ta,
-                                       next_obs,
-                                       next_prior,
-                                       next_finished)
-
-                return (finished, next_input, next_cell_state, emit_output, next_loop_state)
-
-            # Returns RNN emit outputs TensorArray (i.e. logits), final cell state, and final loop state
-            with tf.variable_scope('policy'):
-                _, _, loop_state = tf.nn.raw_rnn(cell=cell, loop_fn=loop_fn)
-                actions_ta, obs_ta, priors_ta, _, _, _ = loop_state
-
-            self.actions = tf.transpose(actions_ta.stack(), perm=[1, 0]) # (?, max_length)
-            self.obs = tf.transpose(obs_ta.stack(), perm=[1, 2, 0]) # (?, obs_dim, max_length)
-            self.priors = tf.transpose(priors_ta.stack(), perm=[1, 0, 2]) # (?, max_length, n_choices)
-            
-            # Memory batch
-            self.memory_batch_ph = make_batch_ph("memory_batch", n_choices)
-            memory_neglogp, _ = self.make_neglogp_and_entropy(self.memory_batch_ph, None)
-
-            self.memory_probs = tf.exp(-memory_neglogp)
-            self.memory_logps = -memory_neglogp
-            
-
-    def make_neglogp_and_entropy(self, B, entropy_gamma) :
+    def make_neglogp_and_entropy(self, B, entropy_gamma):
         """Computes the negative log-probabilities for a given
         batch of actions, observations and priors
         under the current policy.
@@ -246,71 +96,121 @@ class RNNPolicy(Policy):
         Returns
         -------
         neglogp, entropy :
-            Tensorflow tensors
+            PyTorch tensors
         """
-
-        # Entropy decay vector
         if entropy_gamma is None:
             entropy_gamma = 1.0
-        entropy_gamma_decay = np.array([entropy_gamma**t for t in range(self.max_length)], dtype=np.float32)
+        entropy_gamma_decay = torch.tensor([entropy_gamma**t for t in range(self.max_length)], dtype=torch.float32, device=self.device)
 
-        with tf.variable_scope('policy', reuse=True):
-            logits, _ = tf.nn.dynamic_rnn(cell=self.cell,
-                                          inputs=self.state_manager.get_tensor_input(B.obs),
-                                          sequence_length=B.lengths, # Backpropagates only through sequence length
-                                          dtype=tf.float32)
+        # Initialize hidden state
+        batch_size = B.obs.size(0)
+        if isinstance(self.rnn.rnn_cell, nn.LSTM):
+            h0 = torch.zeros(self.rnn.rnn_cell.num_layers, batch_size, self.rnn.rnn_cell.hidden_size, device=self.device)
+            c0 = torch.zeros(self.rnn.rnn_cell.num_layers, batch_size, self.rnn.rnn_cell.hidden_size, device=self.device)
+            hidden = (h0, c0)
+        else:  # GRU
+            hidden = torch.zeros(self.rnn.rnn_cell.num_layers, batch_size, self.rnn.rnn_cell.hidden_size, device=self.device)
 
+        logits, _ = self.rnn(B.obs, hidden)
         if self.action_prob_lowerbound != 0.0:
             logits = self.apply_action_prob_lowerbound(logits)
 
         logits += B.priors
-        probs = tf.nn.softmax(logits)
-        logprobs = tf.nn.log_softmax(logits)
-        B_max_length = tf.shape(B.actions)[1] # Maximum sequence length for this Batch
-        # Generate mask from sequence lengths
-        # NOTE: Using this mask for neglogp and entropy actually does NOT
-        # affect training because gradients are zero outside the lengths.
-        # However, the mask makes tensorflow summaries accurate.
-        mask = tf.sequence_mask(B.lengths, maxlen=B_max_length, dtype=tf.float32)
-        # Negative log probabilities of sequences
-        actions_one_hot = tf.one_hot(B.actions, depth=self.n_choices, axis=-1, dtype=tf.float32)
-        neglogp_per_step = safe_cross_entropy(actions_one_hot, logprobs, axis=2) # Sum over action dim
-        neglogp = tf.reduce_sum(neglogp_per_step * mask, axis=1) # Sum over time dim
-        
-        # NOTE 1: The above implementation is the same as the one below:
-        # neglogp_per_step = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,labels=actions)
-        # neglogp = tf.reduce_sum(neglogp_per_step, axis=1) # Sum over time
-        # NOTE 2: The above implementation is also the same as the one below, with a few caveats:
-        #   Exactly equivalent when removing priors.
-        #   Equivalent up to precision when including clipped prior.
-        #   Crashes when prior is not clipped due to multiplying zero by -inf.
-        # neglogp_per_step = -tf.nn.log_softmax(logits + tf.clip_by_value(priors, -2.4e38, 0)) * actions_one_hot
-        # neglogp_per_step = tf.reduce_sum(neglogp_per_step, axis=2)
-        # neglogp = tf.reduce_sum(neglogp_per_step, axis=1) # Sum over time
-        
-        # If entropy_gamma = 1, entropy_gamma_decay_mask == mask
-        sliced_entropy_gamma_decay = tf.slice(entropy_gamma_decay, [0], [B_max_length])
-        entropy_gamma_decay_mask = sliced_entropy_gamma_decay * mask # ->(batch_size, max_length)
-        entropy_per_step = safe_cross_entropy(probs, logprobs, axis=2) # Sum over action dim -> (batch_size, max_length)
-        entropy = tf.reduce_sum(entropy_per_step * entropy_gamma_decay_mask, axis=1) # Sum over time dim -> (batch_size, )
-        
+        probs = F.softmax(logits, dim=-1)
+        logprobs = F.log_softmax(logits, dim=-1)
+        B_max_length = B.actions.size(1)
+        mask = torch.arange(B_max_length, device=self.device).expand(len(B.lengths), B_max_length) < B.lengths.unsqueeze(1)
+        mask = mask.float()
+
+        actions_one_hot = F.one_hot(B.actions, num_classes=self.n_choices).float()
+        neglogp_per_step = safe_cross_entropy(actions_one_hot, logprobs, dim=2)
+        neglogp = torch.sum(neglogp_per_step * mask, dim=1)
+
+        sliced_entropy_gamma_decay = entropy_gamma_decay[:B_max_length]
+        entropy_gamma_decay_mask = sliced_entropy_gamma_decay * mask
+        entropy_per_step = safe_cross_entropy(probs, logprobs, dim=2)
+        entropy = torch.sum(entropy_per_step * entropy_gamma_decay_mask, dim=1)
+
         return neglogp, entropy
 
-
-    def sample(self, n : int) :
+    def sample(self, n: int):
         """Sample batch of n expressions
 
         Returns
         -------
-        actions, obs, priors : 
+        actions, obs, priors :
             Or a batch
         """
         if self.sample_novel_batch:
             actions, obs, priors = self.sample_novel(n)
         else:
-            feed_dict = {self.batch_size : n}
-            actions, obs, priors = self.sess.run(
-                [self.actions, self.obs, self.priors], feed_dict=feed_dict)
+            actions, obs, priors = self._sample(n)
+
+        return actions, obs, priors
+
+    def _sample(self, n: int):
+        """Sample a batch of n expressions."""
+        self.eval()
+        with torch.no_grad():
+            batch_size = torch.tensor(n, device=self.device)
+            initial_obs = Program.task.reset_task(self.prior)
+            initial_obs = torch.tensor(initial_obs, dtype=torch.float32, device=self.device).unsqueeze(0).expand(n, -1)
+            initial_obs = self.state_manager.process_state(initial_obs)
+
+            initial_prior = torch.tensor(self.prior.initial_prior(), dtype=torch.float32, device=self.device).unsqueeze(0).expand(n, -1)
+
+            actions = []
+            obs = []
+            priors = []
+
+            hidden = None
+            all_actions = []  # Track all actions for proper shape
+            for t in range(self.max_length):
+                if t == 0:
+                    input = self.state_manager.get_tensor_input(initial_obs)
+                    prior = initial_prior
+                else:
+                    input = self.state_manager.get_tensor_input(next_obs)
+                    prior = next_prior
+
+                logits, hidden = self.rnn(input.unsqueeze(1), hidden)
+                logits = logits.squeeze(1)
+
+                if self.action_prob_lowerbound != 0.0:
+                    logits = self.apply_action_prob_lowerbound(logits)
+
+                logits += prior
+                probs = F.softmax(logits, dim=-1)
+                action = torch.multinomial(probs, 1).squeeze(1)
+
+                actions.append(action)
+                obs.append(input)
+                priors.append(prior)
+
+                # Create proper action history for get_next_obs
+                all_actions.append(action)
+                actions_history = torch.stack(all_actions, dim=1)  # [batch_size, t+1]
+
+                next_obs, next_prior, finished = Program.task.get_next_obs(
+                    actions_history.cpu().numpy(),
+                    input.cpu().numpy(),
+                    np.zeros(n, dtype=bool)
+                )
+                next_obs = torch.tensor(next_obs, dtype=torch.float32, device=self.device)
+                next_prior = torch.tensor(next_prior, dtype=torch.float32, device=self.device)
+
+                if finished.all():
+                    break
+
+            actions = torch.stack(actions, dim=1)
+            obs = torch.stack(obs, dim=2)
+            priors = torch.stack(priors, dim=1)
+
+            pad_length = self.max_length - actions.size(1)
+            if pad_length > 0:
+                actions = F.pad(actions, (0, pad_length), value=0)
+                obs = F.pad(obs, (0, pad_length), value=0)
+                priors = F.pad(priors, (0, pad_length, 0, 0), value=0)
 
         return actions, obs, priors
 
@@ -329,96 +229,84 @@ class RNNPolicy(Policy):
         -------
         unique_a, unique_o, unique_p: np.ndarrays
         """
-        feed_dict = {self.batch_size : n}
         n_novel = 0
-        # Keep the samples that are produced by policy and already exist in cache,
-        # so that DSO can train on everything
         old_a, old_o, old_p = [], [], []
-        # Store the new samples separately for (expensive) reward evaluation
         new_a, new_o, new_p = [], [], []
         n_attempts = 0
         while n_novel < n and n_attempts < self.max_attempts_at_novel_batch:
-            # [batch, time], [batch, obs_dim, time], [batch, time, n_choices]
-            actions, obs, priors = self.sess.run(
-                [self.actions, self.obs, self.priors], feed_dict=feed_dict)
+            actions, obs, priors = self._sample(n)
             n_attempts += 1
-            new_indices = [] # indices of new and unique samples
-            old_indices = [] # indices of samples already in cache
+            new_indices = []
+            old_indices = []
             for idx, a in enumerate(actions):
-                # tokens = Program._finish_tokens(a)
-                tokens = _finish_tokens(a)
-                key = tokens.tostring()
-                if not key in Program.cache.keys() and n_novel < n:
+                # Convert tensor to numpy before passing to _finish_tokens
+                tokens = a.cpu().numpy()
+                tokens = _finish_tokens(tokens)
+                key = tokens.tostring()  # Use numpy's tostring() directly
+                if key not in Program.cache.keys() and n_novel < n:
                     new_indices.append(idx)
                     n_novel += 1
                 if key in Program.cache.keys():
                     old_indices.append(idx)
-            # get all new actions, obs, priors in this group
-            new_a.append(np.take(actions, new_indices, axis=0))
-            new_o.append(np.take(obs, new_indices, axis=0))
-            new_p.append(np.take(priors, new_indices, axis=0))
-            old_a.append(np.take(actions, old_indices, axis=0))
-            old_o.append(np.take(obs, old_indices, axis=0))
-            old_p.append(np.take(priors, old_indices, axis=0))
 
-        # number of slots in batch to be filled in by redundant samples
+            new_a.append(actions[new_indices])
+            new_o.append(obs[new_indices])
+            new_p.append(priors[new_indices])
+            old_a.append(actions[old_indices])
+            old_o.append(obs[old_indices])
+            old_p.append(priors[old_indices])
+
         n_remaining = n - n_novel
 
-        # -------------------- combine all -------------------- #
         # Pad everything to max_length
-        for tup, name in zip([(old_a, new_a), (old_o, new_o), (old_p, new_p)],
-                                    ['action', 'obs', 'prior']):
-            dim_length = 1 if name in ['action', 'prior'] else 2
-            max_length = np.max([list_batch.shape[dim_length] for
-                                 list_batch in tup[0] + tup[1]])
-            # tup is a tuple of (old_?, new_?), each is a list of batches
-            for list_batch in tup:
-                for idx, batch in enumerate(list_batch):
-                    n_pad = max_length - batch.shape[dim_length]
-                    # Pad with 0 for everything because training step
-                    # truncates based on each sample's own sequence length
-                    # so the value does not matter
-                    if name == 'action':
-                        width = ((0,0),(0,n_pad))
-                        vals = ((0,0),(0,0))
-                    elif name == 'obs':
-                        width = ((0,0),(0,0),(0,n_pad))
-                        vals = ((0,0),(0,0),(0,0))
-                    else:
-                        width = ((0,0),(0,n_pad),(0,0))
-                        vals = ((0,0),(0,0),(0,0))
-                    list_batch[idx] = np.pad(
-                        batch, pad_width=width, mode='constant',
-                        constant_values=vals)
+        for tensors, dim in [(old_a, 1), (new_a, 1),
+                           (old_o, 2), (new_o, 2),
+                           (old_p, 1), (new_p, 1)]:
+            if tensors:  # Only pad if there are tensors in the list
+                max_length = max(t.size(dim) for t in tensors)
+                tensors[:] = self._pad_batch(tensors, dim, max_length)
 
-        old_a = np.concatenate(old_a)
-        old_o = np.concatenate(old_o)
-        old_p = np.concatenate(old_p)
-        # If not enough novel samples, then fill in with redundancies
-        new_a = np.concatenate(new_a + [old_a[:n_remaining]])
-        new_o = np.concatenate(new_o + [old_o[:n_remaining]])
-        new_p = np.concatenate(new_p + [old_p[:n_remaining]])
+        # Concatenate padded tensors
+        old_a = torch.cat(old_a) if old_a else torch.empty(0, device=self.device)
+        old_o = torch.cat(old_o) if old_o else torch.empty(0, device=self.device)
+        old_p = torch.cat(old_p) if old_p else torch.empty(0, device=self.device)
 
-        # first entry serves to force object type, and also
-        # indicates not to use it if zero
-        self.extended_batch = np.array(
-            [old_a.shape[0], old_a, old_o, old_p], dtype=object)
+        # Include redundant samples if needed
+        new_a = torch.cat(new_a + [old_a[:n_remaining]])
+        new_o = torch.cat(new_o + [old_o[:n_remaining]])
+        new_p = torch.cat(new_p + [old_p[:n_remaining]])
+
+        # Store extended batch for later use
+        self.extended_batch = [old_a.size(0), old_a, old_o, old_p]
         self.valid_extended_batch = True
 
         return new_a, new_o, new_p
 
+    def _pad_batch(self, tensors, dim, max_length=None, pad_value=0):
+        """Pad a list of tensors to the same length along specified dimension."""
+        if max_length is None:
+            max_length = max(t.size(dim) for t in tensors)
+
+        padded_tensors = []
+        for t in tensors:
+            pad_size = max_length - t.size(dim)
+            if pad_size > 0:
+                pad_shape = list(t.shape)
+                pad_shape[dim] = pad_size
+                padding = torch.full(pad_shape, pad_value, dtype=t.dtype, device=t.device)
+                t = torch.cat([t, padding], dim=dim)
+            padded_tensors.append(t)
+        return padded_tensors
+
     def compute_probs(self, memory_batch, log=False):
         """Compute the probabilities of a Batch."""
-
-        feed_dict = {
-            self.memory_batch_ph : memory_batch
-        }
-
-        if log:
-            fetch = self.memory_logps
-        else:
-            fetch = self.memory_probs
-        probs = self.sess.run([fetch], feed_dict=feed_dict)[0]
+        self.eval()
+        with torch.no_grad():
+            if log:
+                fetch = self.memory_logps
+            else:
+                fetch = self.memory_probs
+            probs = fetch(memory_batch)
         return probs
 
     def apply_action_prob_lowerbound(self, logits):
@@ -426,16 +314,15 @@ class RNNPolicy(Policy):
 
         Parameters
         ----------
-        logits: tf.Tensor where last dimension has size self.n_choices
+        logits: torch.Tensor where last dimension has size self.n_choices
 
         Returns
         -------
-        logits_bounded: tf.Tensor
+        logits_bounded: torch.Tensor
         """
-        probs = tf.nn.softmax(logits, axis=-1)
-        probs_bounded = ((1-self.action_prob_lowerbound)*probs +
-                         self.action_prob_lowerbound/
-                         float(self.n_choices))
-        logits_bounded = tf.log(probs_bounded)
+        probs = F.softmax(logits, dim=-1)
+        probs_bounded = ((1 - self.action_prob_lowerbound) * probs +
+                         self.action_prob_lowerbound / float(self.n_choices))
+        logits_bounded = torch.log(probs_bounded)
 
         return logits_bounded

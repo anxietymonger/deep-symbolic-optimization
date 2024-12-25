@@ -200,7 +200,8 @@ class Trainer():
         if override is None:
             # Sample batch of Programs from the Controller
             actions, obs, priors = self.policy.sample(self.batch_size)
-            programs = [from_tokens(a) for a in actions]
+            # Convert tensor actions to numpy before creating Programs
+            programs = [from_tokens(a.cpu().numpy()) for a in actions]
         else:
             # Train on the given batch of Programs
             actions, obs, priors, programs = override
