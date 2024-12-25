@@ -5,7 +5,7 @@ import commentjson as json
 from dso.utils import safe_merge_dicts
 
 
-def get_base_config(task, language_prior):
+def get_base_config(task):
     # Load base config
     with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "config_common.json"), encoding='utf-8') as f:
         base_config = json.load(f)
@@ -21,12 +21,6 @@ def get_base_config(task, language_prior):
         task_config_file = "config_common.json"
     with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), task_config_file), encoding='utf-8') as f:
         task_config = json.load(f)
-
-    # Load language prior config
-    if language_prior:
-        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "config_language.json"), encoding='utf-8') as f:
-            language_config = json.load(f)
-        task_config = safe_merge_dicts(task_config, language_config)
 
     return safe_merge_dicts(base_config, task_config)
 
@@ -54,7 +48,7 @@ def load_config(config=None):
         language_prior = False
 
     # Load task-specific base config
-    base_config = get_base_config(task, language_prior)
+    base_config = get_base_config(task)
 
     # Return combined configs
     return safe_merge_dicts(base_config, user_config)

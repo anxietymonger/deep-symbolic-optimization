@@ -15,7 +15,6 @@ from dso.subroutines import jit_check_constraint_violation, \
         jit_check_constraint_violation_descendant_no_target_tokens, \
         jit_check_constraint_violation_uchild
 from dso.program import Program
-from dso.language_model import LanguageModelPrior as LM
 from dso.utils import import_custom_source
 
 
@@ -35,7 +34,6 @@ def make_prior(library, config_prior):
         "soft_length" : SoftLengthPrior,
         "uniform_arity" : UniformArityPrior,
         "domain_range" : DomainRangeConstraint,
-        "language_model" : LanguageModelPrior,
         "multi_discrete" : MultiDiscreteConstraint
     }
 
@@ -334,7 +332,7 @@ class Prior():
         """
 
         raise NotImplementedError
-        
+
     def describe(self):
         """Describe the Prior."""
 
@@ -344,7 +342,7 @@ class Prior():
 class Constraint(Prior):
     def __init__(self, library):
         Prior.__init__(self, library)
-        
+
     def make_constraint(self, mask, tokens):
         """
         Generate the prior for a batch of constraints and the corresponding
@@ -370,25 +368,25 @@ class Constraint(Prior):
             either 0.0 or -np.inf.
         """
         prior = np.zeros((mask.shape[0], self.L), dtype=np.float32)
-        
+
         for t in tokens:
             prior[mask, t] = self.mask_val
         return prior
-    
+
     def is_violated(self, actions, parent, sibling):
         """
-        Given a set of actions, tells us if a prior constraint has been violated 
-        post hoc. 
-        
+        Given a set of actions, tells us if a prior constraint has been violated
+        post hoc.
+
         This is a generic version that will run using the __call__ function so that one
-        does not have to write a function twice for both DSO and Deap. 
-        
+        does not have to write a function twice for both DSO and Deap.
+
         >>>HOWEVER<<<
-        
+
         Using this function is less optimal than writing a variant for Deap. So...
-        
+
         If you create a constraint and find you use if often with Deap, you should go ahead and
-        write the optimal version. 
+        write the optimal version.
 
         Returns
         -------
@@ -402,24 +400,24 @@ class Constraint(Prior):
         assert len(actions.shape) == 2, "Only takes in one action at a time since this is how Deap will use it."
         assert actions.shape[0] == 1, "Only takes in one action at a time since this is how Deap will use it."
         dangling        = np.ones((1), dtype=np.int32)
-        
-        # For each step in time, get the prior                                
+
+        # For each step in time, get the prior
         for t in range(actions.shape[1]):
-            dangling    += self.library.arities[actions[:,t]] - 1   
+            dangling    += self.library.arities[actions[:,t]] - 1
             priors      = self.__call__(actions[:,:t], parent[:,t], sibling[:,t], dangling)
             # Does our action conflict with this prior?
             if priors[0, actions[0,t]] == -np.inf:
                 return True
 
         return False
-    
+
     def test_is_violated(self, actions, parent, sibling):
         r"""
             This allows one to call the generic version of "is_violated" for testing purposes
-            from the derived classes even if they have an optimized version. 
+            from the derived classes even if they have an optimized version.
         """
         return Constraint.is_violated(self, actions, parent, sibling)
-    
+
 
 class RelationalConstraint(Constraint):
     """
@@ -524,7 +522,7 @@ class RelationalConstraint(Constraint):
             unary_effectors = np.intersect1d(self.effectors, self.library.unary_tokens)
             adj_unary_effectors = self.library.parent_adjust[unary_effectors]
             adj_effectors = self.library.parent_adjust[self.effectors]
-            violated = jit_check_constraint_violation_uchild(actions, parent, sibling, self.targets, 
+            violated = jit_check_constraint_violation_uchild(actions, parent, sibling, self.targets,
                                                      adj_unary_effectors, adj_effectors)
 
         return violated
@@ -572,9 +570,9 @@ class TrigConstraint(RelationalConstraint):
                                              targets=targets,
                                              effectors=effectors,
                                              relationship="descendant")
-        
+
     def is_violated(self, actions, parent, sibling):
-        
+
         # Call a slightly faster descendant computation since target is the same as effectors
         return jit_check_constraint_violation_descendant_no_target_tokens(\
                 actions, self.effectors, self.library.binary_tokens, self.library.unary_tokens)
@@ -870,7 +868,7 @@ class DomainRangeConstraint(Constraint):
         self.max_length = None
         self.last_chance_unary = Prior.initial_prior(self)
         for t in self.library.unary_tokens:
-            parent = self.library.parent_adjust[t] 
+            parent = self.library.parent_adjust[t]
             if all([parent in arr for arr in self.constraining_parents]):
                 self.last_chance_unary[t] = -np.inf
 
@@ -988,44 +986,6 @@ class SoftLengthPrior(Prior):
         return None
 
 
-
-class LanguageModelPrior(Prior):
-    """Class that applies a prior based on a pre-trained language model."""
-
-    def __init__(self, library, weight=1.0, **kwargs):
-
-        Prior.__init__(self, library)
-
-        self.lm = LM(library, **kwargs)
-        self.weight = weight
-
-    def initial_prior(self):
-
-        # TBD: Get initial prior from language model
-        return np.zeros((self.L,), dtype=np.float32)
-
-    def __call__(self, actions, parent, sibling, dangling):
-
-        """
-        NOTE: This assumes that the prior is always called sequentially during
-        sampling. This may break if calling the prior arbitrarily.
-        """
-        if actions.shape[1] == 1:
-            self.lm.next_state = None
-
-        action = actions[:, -1] # Current action
-        prior = self.lm.get_lm_prior(action)
-        prior *= self.weight
-
-        return prior
-
-    def validate(self):
-        if self.weight is None:
-            message = "Need to specify language model arguments."
-            return message
-        return None
-
-
 class StateCheckerConstraint(Constraint):
     """Class that impose constraints on StateChecker Tokens to avoid degenerate
     situations (e.g., checking if xi < 6 when we know xi < 3).
@@ -1128,10 +1088,10 @@ class MutuallyExclusiveConstraint(Constraint):
     """Class that constrains the program from having two or more distinct tokens
     in a given set of tokens. Mathematically, this constrains the intersection
     of set(tokens) and set(actions) to have a resulting size of 0 or 1.
-    
-    For example, if the given set of tokens = ["poly", "const"], then this 
-    constraint prevents actions = ["add", "const", "poly"] to be sampled. 
-    Note, however, that it does not prevents the same token to appear multiple 
+
+    For example, if the given set of tokens = ["poly", "const"], then this
+    constraint prevents actions = ["add", "const", "poly"] to be sampled.
+    Note, however, that it does not prevents the same token to appear multiple
     times. So, e.g., actions = ["add", "poly", "poly"] is allowed."""
 
     def __init__(self, library, tokens):
@@ -1162,7 +1122,7 @@ class MutuallyExclusiveConstraint(Constraint):
         message = self.__class__.__name__
         message += ": Two or more distinct tokens in [{}] cannot appear in the same sequence.".format(tokens)
         return message
-                    
+
 class PolyConstraint(Constraint):
     """Class that impose constraints such that polynomial fitting problems can be
     constructed and well-defined when Polynomial Token is in library."""
@@ -1181,7 +1141,7 @@ class PolyConstraint(Constraint):
                                                     effectors=invalid_ancestors,
                                                     relationship="descendant")
             self.priors.append(descendant_prior)
-        
+
         # poly and const cannot appear in the same traversal
         if library.const_token is not None:
             mutually_exclusive_tokens = np.array([library.poly_token, library.const_token])
@@ -1189,7 +1149,7 @@ class PolyConstraint(Constraint):
 
     def __call__(self, actions, parent, sibling, dangling):
         prior = sum([prior(actions, parent, sibling, dangling)
-                     for prior in self.priors])    
+                     for prior in self.priors])
         return prior
 
     def validate(self):
@@ -1220,7 +1180,7 @@ class MultiDiscreteConstraint(Constraint):
         Parameters
         ----------
         dense : bool
-            If True, once one MultiDiscreteAction is sampled, "STOP" cannot be 
+            If True, once one MultiDiscreteAction is sampled, "STOP" cannot be
             sampled until MultiDiscreteAction for all action dimensions are sampled.
 
         ordered : bool

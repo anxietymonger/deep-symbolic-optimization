@@ -97,14 +97,14 @@
 
    // Hyperparameters related to the policy, i.e. parameterized distribution over objects.
    "policy" : {
-      
+
       // Type of policy
       // "rnn" is equivalent to "dso.policy.rnn_policy:RNNPolicy"
-      "policy_type" : "rnn", 
+      "policy_type" : "rnn",
 
       // Maximum sequence length.
       "max_length" : 64,
-      
+
       // Policy parameters
       "cell" : "lstm",
       "num_layers" : 1,
@@ -117,7 +117,7 @@
 
       // Type of policy optimizer
       // "pg" is equivalent to "dso.policy_optimizer.pg_policy_optimizer:PGPolicyOptimizer"
-      "policy_optimizer_type" : "pg", 
+      "policy_optimizer_type" : "pg",
 
       // Whether to compute TensorBoard summaries.
       "summary" : false,
@@ -213,12 +213,6 @@
       // Prevents first token if its range does not contain X range
       // and prevents input variable X if its parent's domain does not contain X domain
       "domain_range" : {
-         "on" : false
-      },
-
-      // EXPERIMENTAL: Language model to use as a prior.
-      "language_model" : {
-         "weight" : null,
          "on" : false
       },
 

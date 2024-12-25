@@ -30,7 +30,7 @@
       // With protected=false, floating-point errors (e.g. log of negative
       // number) will simply returns a minimal reward. With protected=true,
       // "protected" functions will prevent floating-point errors, but may
-      // introduce discontinuities in the learned functions.      
+      // introduce discontinuities in the learned functions.
       "protected" : false,
 
       // You can add artificial reward noise directly to the reward function.
@@ -57,7 +57,7 @@
          // of least squares regressor "dso_least_squares".
          "regressor": "dso_least_squares",
          "regressor_params": {
-            // Cutoff value for p-value of coefficients. Coefficients with 
+            // Cutoff value for p-value of coefficients. Coefficients with
             // larger p-values are forced to zero.
             "cutoff_p_value": 1.0,
             // Maximum number of terms in the polynomial. If more coefficients are nonzero,
@@ -110,7 +110,7 @@
    "prior": {
       "length" : {
          "min_" : 4,
-         "max_" : 64,
+         "max_" : 30,
          "on" : true
       },
       "repeat" : {
