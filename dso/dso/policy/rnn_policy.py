@@ -119,7 +119,7 @@ class RNNPolicy(Policy):
         probs = F.softmax(logits, dim=-1)
         logprobs = F.log_softmax(logits, dim=-1)
         B_max_length = B.actions.size(1)
-        mask = torch.arange(B_max_length, device=self.device).expand(len(B.lengths), B_max_length) < B.lengths.unsqueeze(1)
+        mask = torch.arange(B_max_length, device=self.device).expand(len(B.lengths), B_max_length) < torch.Tensor(B.lengths).unsqueeze(1)
         mask = mask.float()
 
         actions_one_hot = F.one_hot(B.actions, num_classes=self.n_choices).float()

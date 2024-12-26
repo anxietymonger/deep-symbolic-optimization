@@ -110,7 +110,7 @@
    "prior": {
       "length" : {
          "min_" : 4,
-         "max_" : 20,
+         "max_" : 19,
          "on" : true
       },
       "repeat" : {

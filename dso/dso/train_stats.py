@@ -238,10 +238,6 @@ class StatsLogger():
         if self.save_token_count:
             self.write_token_count(programs)
 
-        # summary writers have their own buffer
-        if self.save_summary:
-            self.summary_writer.add_summary(summaries, iteration)
-
         # Should the buffer be saved now?
         if iteration % self.buffer_frequency == 0:
             self.flush_buffers()
@@ -409,8 +405,6 @@ class StatsLogger():
         if self.save_positional_entropy:
             self.buffer_pos_entropy = self.flush_buffer(
                 self.buffer_pos_entropy, self.positional_entropy_output_file, byte_buffer=True)
-        if self.summary_writer:
-            self.summary_writer.flush()
 
     def flush_buffer(self, buffer, output_file, byte_buffer=False):
         """
