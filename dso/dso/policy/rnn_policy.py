@@ -5,7 +5,6 @@ import torch.nn.functional as F
 import numpy as np
 
 from dso.program import Program
-from dso.program import _finish_tokens
 from dso.policy import Policy
 
 
@@ -26,6 +25,7 @@ def safe_cross_entropy(p, logq, dim=-1):
     # Handle cases where p is 0
     safe_logq = torch.where(p == 0, torch.ones_like(logq), logq)
     return -torch.sum(p * safe_logq, dim=dim)
+
 
 class RNNPolicy(Policy):
     def __init__(self, prior, state_manager,
@@ -134,25 +134,9 @@ class RNNPolicy(Policy):
         return neglogp, entropy
 
     def sample(self, n: int):
-        """Sample batch of n expressions
-
-        Returns
-        -------
-        actions, obs, priors :
-            Or a batch
-        """
-        if self.sample_novel_batch:
-            actions, obs, priors = self.sample_novel(n)
-        else:
-            actions, obs, priors = self._sample(n)
-
-        return actions, obs, priors
-
-    def _sample(self, n: int):
         """Sample a batch of n expressions."""
         self.eval()
         with torch.no_grad():
-            batch_size = torch.tensor(n, device=self.device)
             initial_obs = Program.task.reset_task(self.prior)
             initial_obs = torch.tensor(initial_obs, dtype=torch.float32, device=self.device).unsqueeze(0).expand(n, -1)
             initial_obs = self.state_manager.process_state(initial_obs)
@@ -213,90 +197,6 @@ class RNNPolicy(Policy):
                 priors = F.pad(priors, (0, pad_length, 0, 0), value=0)
 
         return actions, obs, priors
-
-    def sample_novel(self, n: int):
-        """Sample a batch of n expressions not contained in cache.
-
-        If unable to do so within self.max_attempts_at_novel_batch,
-        then fills in the remaining slots with previously-seen samples.
-
-        Parameters
-        ----------
-        n: int
-            batch size
-
-        Returns
-        -------
-        unique_a, unique_o, unique_p: np.ndarrays
-        """
-        n_novel = 0
-        old_a, old_o, old_p = [], [], []
-        new_a, new_o, new_p = [], [], []
-        n_attempts = 0
-        while n_novel < n and n_attempts < self.max_attempts_at_novel_batch:
-            actions, obs, priors = self._sample(n)
-            n_attempts += 1
-            new_indices = []
-            old_indices = []
-            for idx, a in enumerate(actions):
-                # Convert tensor to numpy before passing to _finish_tokens
-                tokens = a.cpu().numpy()
-                tokens = _finish_tokens(tokens)
-                key = tokens.tostring()  # Use numpy's tostring() directly
-                if key not in Program.cache.keys() and n_novel < n:
-                    new_indices.append(idx)
-                    n_novel += 1
-                if key in Program.cache.keys():
-                    old_indices.append(idx)
-
-            new_a.append(actions[new_indices])
-            new_o.append(obs[new_indices])
-            new_p.append(priors[new_indices])
-            old_a.append(actions[old_indices])
-            old_o.append(obs[old_indices])
-            old_p.append(priors[old_indices])
-
-        n_remaining = n - n_novel
-
-        # Pad everything to max_length
-        for tensors, dim in [(old_a, 1), (new_a, 1),
-                           (old_o, 2), (new_o, 2),
-                           (old_p, 1), (new_p, 1)]:
-            if tensors:  # Only pad if there are tensors in the list
-                max_length = max(t.size(dim) for t in tensors)
-                tensors[:] = self._pad_batch(tensors, dim, max_length)
-
-        # Concatenate padded tensors
-        old_a = torch.cat(old_a) if old_a else torch.empty(0, device=self.device)
-        old_o = torch.cat(old_o) if old_o else torch.empty(0, device=self.device)
-        old_p = torch.cat(old_p) if old_p else torch.empty(0, device=self.device)
-
-        # Include redundant samples if needed
-        new_a = torch.cat(new_a + [old_a[:n_remaining]])
-        new_o = torch.cat(new_o + [old_o[:n_remaining]])
-        new_p = torch.cat(new_p + [old_p[:n_remaining]])
-
-        # Store extended batch for later use
-        self.extended_batch = [old_a.size(0), old_a, old_o, old_p]
-        self.valid_extended_batch = True
-
-        return new_a, new_o, new_p
-
-    def _pad_batch(self, tensors, dim, max_length=None, pad_value=0):
-        """Pad a list of tensors to the same length along specified dimension."""
-        if max_length is None:
-            max_length = max(t.size(dim) for t in tensors)
-
-        padded_tensors = []
-        for t in tensors:
-            pad_size = max_length - t.size(dim)
-            if pad_size > 0:
-                pad_shape = list(t.shape)
-                pad_shape[dim] = pad_size
-                padding = torch.full(pad_shape, pad_value, dtype=t.dtype, device=t.device)
-                t = torch.cat([t, padding], dim=dim)
-            padded_tensors.append(t)
-        return padded_tensors
 
     def compute_probs(self, memory_batch, log=False):
         """Compute the probabilities of a Batch."""
