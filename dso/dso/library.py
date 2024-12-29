@@ -172,7 +172,7 @@ class Polynomial(Token):
 
     def to_str_tokens(self):
         """
-        Return a list of tokens of add, mul, inputs, and constants that 
+        Return a list of tokens of add, mul, inputs, and constants that
         is equivalent to this poly token.
         """
         if self.exponents is None and self.coef is None:
@@ -287,7 +287,7 @@ class MultiDiscreteAction(Token):
             assert isinstance(value, int) and value >= 0
             name = "a{}_{}".format(action_dim+1, value+1)
             super().__init__(function=self.apply_action, name=name, arity=1, complexity=1)
-            
+
     def apply_action(self, *args):
         if self.action_dim is None:
             return np.array([self.value.copy()])
@@ -330,7 +330,7 @@ class Library():
 
         self.multi_discrete_tokens = np.array(
             [i for i, t in enumerate(self.tokens) if isinstance(t, MultiDiscreteAction)],
-            dtype=np.int32)            
+            dtype=np.int32)
 
         def get_tokens_of_arity(arity):
             _tokens = [i for i in range(self.L) if self.arities[i] == arity]

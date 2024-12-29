@@ -52,9 +52,6 @@ class RNNPolicy(Policy):
         self.to(self.device)
 
     def _setup_model(self, cell="lstm", num_layers=1, num_units=32, initializer="zeros"):
-        if isinstance(num_units, int):
-            num_units = [num_units] * num_layers
-
         # Get input size from state manager's processed state
         dummy_obs = torch.zeros(1, Program.task.OBS_DIM, device=self.device)
         processed_obs = self.state_manager.process_state(dummy_obs)
@@ -63,12 +60,12 @@ class RNNPolicy(Policy):
         # Create recurrent cell
         if cell == "lstm":
             rnn = nn.LSTM(input_size=input_size,
-                         hidden_size=num_units[0],
+                         hidden_size=num_units,
                          num_layers=num_layers,
                          batch_first=True)
         elif cell == "gru":
             rnn = nn.GRU(input_size=input_size,
-                        hidden_size=num_units[0],
+                        hidden_size=num_units,
                         num_layers=num_layers,
                         batch_first=True)
         else:
@@ -111,7 +108,8 @@ class RNNPolicy(Policy):
         else:  # GRU
             hidden = torch.zeros(self.rnn.rnn_cell.num_layers, batch_size, self.rnn.rnn_cell.hidden_size, device=self.device)
 
-        logits, _ = self.rnn(B.obs, hidden)
+        input = self.state_manager.get_tensor_input(B.obs)
+        logits, _ = self.rnn(input, hidden)
         if self.action_prob_lowerbound != 0.0:
             logits = self.apply_action_prob_lowerbound(logits)
 
@@ -137,12 +135,6 @@ class RNNPolicy(Policy):
         """Sample a batch of n expressions."""
         self.eval()
         with torch.no_grad():
-            initial_obs = Program.task.reset_task(self.prior)
-            initial_obs = torch.tensor(initial_obs, dtype=torch.float32, device=self.device).unsqueeze(0).expand(n, -1)
-            initial_obs = self.state_manager.process_state(initial_obs)
-
-            initial_prior = torch.tensor(self.prior.initial_prior(), dtype=torch.float32, device=self.device).unsqueeze(0).expand(n, -1)
-
             actions = []
             obs = []
             priors = []
@@ -151,12 +143,18 @@ class RNNPolicy(Policy):
             all_actions = []  # Track all actions for proper shape
             for t in range(self.max_length):
                 if t == 0:
-                    input = self.state_manager.get_tensor_input(initial_obs)
+                    initial_obs = Program.task.reset_task(self.prior)
+                    initial_obs = torch.tensor(initial_obs, dtype=torch.float32, device=self.device).unsqueeze(0).expand(n, -1)
+                    initial_obs = self.state_manager.process_state(initial_obs)
+                    initial_prior = torch.tensor(self.prior.initial_prior(), dtype=torch.float32, device=self.device).unsqueeze(0).expand(n, -1)
+
+                    ob = initial_obs
                     prior = initial_prior
                 else:
-                    input = self.state_manager.get_tensor_input(next_obs)
+                    ob = next_obs
                     prior = next_prior
 
+                input = self.state_manager.get_tensor_input(ob)
                 logits, hidden = self.rnn(input.unsqueeze(1), hidden)
                 logits = logits.squeeze(1)
 
@@ -166,9 +164,8 @@ class RNNPolicy(Policy):
                 logits += prior
                 probs = F.softmax(logits, dim=-1)
                 action = torch.multinomial(probs, 1).squeeze(1)
-
                 actions.append(action)
-                obs.append(input)
+                obs.append(ob)
                 priors.append(prior)
 
                 # Create proper action history for get_next_obs
@@ -189,12 +186,6 @@ class RNNPolicy(Policy):
             actions = torch.stack(actions, dim=1)
             obs = torch.stack(obs, dim=2)
             priors = torch.stack(priors, dim=1)
-
-            pad_length = self.max_length - actions.size(1)
-            if pad_length > 0:
-                actions = F.pad(actions, (0, pad_length), value=0)
-                obs = F.pad(obs, (0, pad_length), value=0)
-                priors = F.pad(priors, (0, pad_length, 0, 0), value=0)
 
         return actions, obs, priors
 
