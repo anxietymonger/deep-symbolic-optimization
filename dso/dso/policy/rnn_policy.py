@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from loguru import logger
 
 from dso.program import Program
 from dso.policy import Policy
@@ -186,6 +187,8 @@ class RNNPolicy(Policy):
             actions = torch.stack(actions, dim=1)
             obs = torch.stack(obs, dim=2)
             priors = torch.stack(priors, dim=1)
+
+        # logger.info(f"{priors}")
 
         return actions, obs, priors
 

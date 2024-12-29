@@ -14,6 +14,7 @@ from datetime import datetime
 import numpy as np
 import torch
 import commentjson as json
+from loguru import logger
 
 from dso.task import set_task
 from dso.train import Trainer
@@ -67,6 +68,7 @@ class DeepSymbolicOptimizer():
         self.prior = self.make_prior()
         self.state_manager = self.make_state_manager()
         self.policy = self.make_policy()
+        logger.info(f"{self.policy.prior.priors}")
         self.policy_optimizer = self.make_policy_optimizer()
         self.gp_controller = self.make_gp_controller()
         self.logger = self.make_logger()
@@ -186,6 +188,7 @@ class DeepSymbolicOptimizer():
 
     def make_prior(self):
         prior = make_prior(Program.library, self.config_prior)
+        logger.info(f"Prior: {prior.priors}")
         return prior
 
     def make_state_manager(self):

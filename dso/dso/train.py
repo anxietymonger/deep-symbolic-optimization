@@ -8,9 +8,8 @@ import torch
 import numpy as np
 
 from dso.program import Program, from_tokens
-from dso.utils import empirical_entropy, get_duration, weighted_quantile, pad_action_obs_priors
-from dso.memory import Batch, make_queue
-from dso.variance import quantile_variance
+from dso.utils import empirical_entropy, get_duration, pad_action_obs_priors
+from dso.memory import Batch
 
 
 torch.manual_seed(0)
@@ -28,8 +27,7 @@ class Trainer():
                  pool, n_samples=2000000, batch_size=1000, alpha=0.5,
                  epsilon=0.05, verbose=True, baseline="R_e",
                  b_jumpstart=False, early_stopping=True, debug=0,
-                 use_memory=False, memory_capacity=1e3,  warm_start=None, memory_threshold=None,
-                 complexity="token", const_optimizer="scipy", const_params=None,  n_cores_batch=1):
+                 complexity="token", const_optimizer="scipy", const_params=None, n_cores_batch=1):
 
         """
         Initializes the main training loop.
@@ -91,32 +89,6 @@ class Trainer():
         debug : int, optional
             Debug level, also passed to Controller. 0: No debug. 1: Print initial
             parameter means. 2: Print parameter means each step.
-
-        use_memory : bool, optional
-            If True, use memory queue for reward quantile estimation.
-
-        memory_capacity : int
-            Capacity of memory queue.
-
-        warm_start : int or None
-            Number of samples to warm start the memory queue. If None, uses
-            batch_size.
-
-        memory_threshold : float or None
-            If not None, run quantile variance/bias estimate experiments after
-            memory weight exceeds memory_threshold.
-
-        complexity : str, optional
-            Not used
-
-        const_optimizer : str or None, optional
-            Not used
-
-        const_params : dict, optional
-            Not used
-
-        n_cores_batch : int, optional
-            Not used
         """
 
         self.policy = policy
@@ -133,29 +105,6 @@ class Trainer():
         self.b_jumpstart = b_jumpstart
         self.early_stopping = early_stopping
         self.debug = debug
-        self.use_memory = use_memory
-        self.memory_threshold = memory_threshold
-
-        # Create the memory queue
-        if self.use_memory:
-            assert self.epsilon is not None and self.epsilon < 1.0, \
-                "Memory queue is only used with risk-seeking."
-            self.memory_queue = make_queue(policy=self.policy, priority=False,
-                                           capacity=int(memory_capacity))
-
-            # Warm start the queue
-            # TBD: Parallelize. Abstract sampling a Batch
-            warm_start = warm_start if warm_start is not None else self.batch_size
-            actions, obs, priors = policy.sample(warm_start)
-            programs = [from_tokens(a) for a in actions]
-            r = np.array([p.r for p in programs])
-            l = np.array([len(p.traversal) for p in programs])
-            on_policy = np.array([p.originally_on_policy for p in programs])
-            sampled_batch = Batch(actions=actions, obs=obs, priors=priors,
-                                  lengths=l, rewards=r, on_policy=on_policy)
-            self.memory_queue.push_batch(sampled_batch, programs)
-        else:
-            self.memory_queue = None
 
         self.nevals = 0 # Total number of sampled expressions (from RL or GP)
         self.iteration = 0 # Iteration counter
@@ -292,38 +241,7 @@ class Trainer():
         rewards and filter out programs with lesser reward.
         """
         if self.epsilon is not None and self.epsilon < 1.0:
-            # Compute reward quantile estimate
-            if self.use_memory: # Memory-augmented quantile
-                # Get subset of Programs not in buffer
-                unique_programs = [p for p in programs \
-                                   if p.str not in self.memory_queue.unique_items]
-                N = len(unique_programs)
-
-                # Get rewards
-                memory_r = self.memory_queue.get_rewards()
-                sample_r = [p.r for p in unique_programs]
-                combined_r = np.concatenate([memory_r, sample_r])
-
-                # Compute quantile weights
-                memory_w = self.memory_queue.compute_probs()
-                if N == 0:
-                    print("WARNING: Found no unique samples in batch!")
-                    combined_w = memory_w / memory_w.sum() # Renormalize
-                else:
-                    sample_w = np.repeat((1 - memory_w.sum()) / N, N)
-                    combined_w = np.concatenate([memory_w, sample_w])
-
-                # Quantile variance/bias estimates
-                if self.memory_threshold is not None:
-                    print("Memory weight:", memory_w.sum())
-                    if memory_w.sum() > self.memory_threshold:
-                        quantile_variance(self.memory_queue, self.policy, self.batch_size, self.epsilon, self.iteration)
-
-                # Compute the weighted quantile
-                quantile = weighted_quantile(values=combined_r, weights=combined_w, q=1 - self.epsilon)
-
-            else: # Empirical quantile
-                quantile = np.quantile(r, 1 - self.epsilon, interpolation="higher")
+            quantile = np.quantile(r, 1 - self.epsilon, interpolation="higher")
 
             # Filter quantities whose reward >= quantile
             keep = r >= quantile
@@ -368,10 +286,6 @@ class Trainer():
 
         # Walltime calculation for the iteration
         iteration_walltime = time.time() - start_time
-
-        # Update the memory queue
-        if self.memory_queue is not None:
-            self.memory_queue.push_batch(sampled_batch, programs)
 
         # Update new best expression
         if r_max > self.r_best:
