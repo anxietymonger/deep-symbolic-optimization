@@ -6,7 +6,6 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 import os
 import zlib
 from collections import defaultdict
-from multiprocessing import Pool, cpu_count
 import random
 from time import time
 from datetime import datetime
@@ -57,7 +56,7 @@ class DeepSymbolicOptimizer():
         Program.clear_cache()
 
         # Generate objects needed for training and set seeds
-        self.pool = self.make_pool_and_set_task()
+        self.make_task()
         self.set_seeds() # Must be called _after_ resetting graph and _after_ setting task
 
         # Setup logdirs and output files
@@ -123,12 +122,8 @@ class DeepSymbolicOptimizer():
         })
 
         # Save all results available only after all iterations are finished. Also return metrics to be added to the summary file
-        results_add = self.logger.save_results(self.pool, self.trainer.nevals)
+        results_add = self.logger.save_results(self.trainer.nevals)
         result.update(results_add)
-
-        # Close the pool
-        if self.pool is not None:
-            self.pool.close()
 
         return result
 
@@ -200,7 +195,6 @@ class DeepSymbolicOptimizer():
                           self.policy_optimizer,
                           self.gp_controller,
                           self.logger,
-                          self.pool,
                           **self.config_training)
         return trainer
 
@@ -224,10 +218,7 @@ class DeepSymbolicOptimizer():
             gp_controller = None
         return gp_controller
 
-    def make_pool_and_set_task(self):
-        # Create the pool and set the Task for each worker
-
-        # Set complexity and const optimizer here so pool can access them
+    def make_task(self):
         # Set the complexity function
         complexity = self.config_training["complexity"]
         Program.set_complexity(complexity)
@@ -238,18 +229,8 @@ class DeepSymbolicOptimizer():
         const_params = const_params if const_params is not None else {}
         Program.set_const_optimizer(const_optimizer, **const_params)
 
-        pool = None
-        n_cores_batch = self.config_training.get("n_cores_batch")
-        if n_cores_batch is not None:
-            if n_cores_batch == -1:
-                n_cores_batch = cpu_count()
-            if n_cores_batch > 1:
-                pool = Pool(n_cores_batch, initializer=set_task, initargs=(self.config_task,))
-
         # Set the Task for the parent process
         set_task(self.config_task)
-
-        return pool
 
     def make_output_file(self):
         """Generates an output filename"""

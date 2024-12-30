@@ -15,19 +15,12 @@ from dso.memory import Batch
 torch.manual_seed(0)
 
 
-# Work for multiprocessing pool: compute reward
-def work(p):
-    """Compute reward and return it with optimized constants"""
-    r = p.r
-    return p
-
-
 class Trainer():
     def __init__(self, policy, policy_optimizer, gp_controller, logger,
-                 pool, n_samples=2000000, batch_size=1000, alpha=0.5,
+                 n_samples=2000000, batch_size=1000, alpha=0.5,
                  epsilon=0.05, verbose=True, baseline="R_e",
                  b_jumpstart=False, early_stopping=True, debug=0,
-                 complexity="token", const_optimizer="scipy", const_params=None, n_cores_batch=1):
+                 complexity="token", const_optimizer="scipy", const_params=None):
 
         """
         Initializes the main training loop.
@@ -46,11 +39,6 @@ class Trainer():
 
         logger : dso.train_stats.StatsLogger
             Logger to save results with
-
-        pool : multiprocessing.Pool or None
-            Pool to parallelize reward computation. For the control task, each
-            worker should have its own model. If None, a Pool will be
-            generated if n_cores_batch > 1.
 
         n_samples : int or None, optional
             Total number of objects to sample. This may be exceeded depending
@@ -95,7 +83,6 @@ class Trainer():
         self.policy_optimizer = policy_optimizer
         self.gp_controller = gp_controller
         self.logger = logger
-        self.pool = pool
         self.n_samples = n_samples
         self.batch_size = batch_size
         self.alpha = alpha
@@ -134,7 +121,6 @@ class Trainer():
         start_time = time.time()
         if self.verbose:
             print("-- RUNNING ITERATIONS START -------------")
-
 
         # Number of extra samples generated during attempt to get
         # batch_size new samples
@@ -196,15 +182,6 @@ class Trainer():
             actions = np.append(actions, deap_actions, axis=0)
             obs = np.append(obs, deap_obs, axis=0)
             priors = np.append(priors, deap_priors, axis=0)
-
-        # Compute rewards in parallel
-        if self.pool is not None:
-            # Filter programs that need reward computing
-            programs_to_optimize = list(set([p for p in programs if "r" not in p.__dict__]))
-            pool_p_dict = { p.str : p for p in self.pool.map(work, programs_to_optimize) }
-            programs = [pool_p_dict[p.str] if "r" not in p.__dict__  else p for p in programs]
-            # Make sure to update cache with new programs
-            Program.cache.update(pool_p_dict)
 
         # Compute rewards (or retrieve cached rewards)
         r = np.array([p.r for p in programs])

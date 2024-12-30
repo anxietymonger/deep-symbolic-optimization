@@ -3,7 +3,6 @@
 import os
 import sys
 import time
-import multiprocessing
 from copy import deepcopy
 from datetime import datetime
 
@@ -53,11 +52,10 @@ def print_summary(config, runs, messages):
 @click.command()
 @click.argument('config_template', default="")
 @click.option('--runs', '--r', default=1, type=int, help="Number of independent runs with different seeds")
-@click.option('--n_cores_task', '--n', default=1, help="Number of cores to spread out across tasks")
 @click.option('--seed', '--s', default=None, type=int, help="Starting seed (overwrites seed in config), incremented for each independent run")
 @click.option('--benchmark', '--b', default=None, type=str, help="Name of benchmark")
 @click.option('--exp_name', default=None, type=str, help="Name of experiment to manually generate log path")
-def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
+def main(config_template, runs, seed, benchmark, exp_name):
     """Runs DSO in parallel across multiple seeds using multiprocessing."""
 
     messages = []
@@ -95,28 +93,6 @@ def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
     timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
     config["experiment"]["timestamp"] = timestamp
 
-    # Fix incompatible configurations
-    if n_cores_task == -1:
-        n_cores_task = multiprocessing.cpu_count()
-    if n_cores_task > runs:
-        messages.append(
-                "INFO: Setting 'n_cores_task' to {} because there are only {} runs.".format(
-                    runs, runs))
-        n_cores_task = runs
-    if config["training"]["verbose"] and n_cores_task > 1:
-        messages.append(
-                "INFO: Setting 'verbose' to False for parallelized run.")
-        config["training"]["verbose"] = False
-    if config["training"]["n_cores_batch"] != 1 and n_cores_task > 1:
-        messages.append(
-                "INFO: Setting 'n_cores_batch' to 1 to avoid nested child processes.")
-        config["training"]["n_cores_batch"] = 1
-    if config["gp_meld"]["run_gp_meld"] and n_cores_task > 1 and runs > 1:
-        messages.append(
-                "INFO: Setting 'parallel_eval' to 'False' as we are already parallelizing.")
-        config["gp_meld"]["parallel_eval"] = False
-
-
     # Start training
     print_summary(config, runs, messages)
 
@@ -126,18 +102,11 @@ def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
         config["experiment"]["seed"] += i
 
     # Farm out the work
-    if n_cores_task > 1:
-        pool = multiprocessing.Pool(n_cores_task)
-        for i, (result, summary_path) in enumerate(pool.imap_unordered(train_dso, configs)):
-            if not safe_update_summary(summary_path, result):
-                print("Warning: Could not update summary stats at {}".format(summary_path))
-            print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
-    else:
-        for i, config in enumerate(configs):
-            result, summary_path = train_dso(config)
-            if not safe_update_summary(summary_path, result):
-                print("Warning: Could not update summary stats at {}".format(summary_path))
-            print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
+    for i, config in enumerate(configs):
+        result, summary_path = train_dso(config)
+        if not safe_update_summary(summary_path, result):
+            print("Warning: Could not update summary stats at {}".format(summary_path))
+        print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
 
     # Evaluate the log files
     print("\n== POST-PROCESS START =================")

@@ -1,7 +1,6 @@
 """Class for symbolic expression object or program."""
 
 import array
-import os
 import warnings
 from textwrap import indent
 
@@ -10,7 +9,6 @@ from dso.library import Token, PlaceholderConstant, Polynomial
 from dso.const import make_const_optimizer
 from dso.utils import cached_property
 import dso.utils as U
-
 
 
 def _finish_tokens(tokens):
@@ -124,10 +122,10 @@ def from_tokens(tokens, skip_cache=False, on_policy=True, finish_tokens=True):
     skip_cache : bool
         Whether to bypass the cache when creating the program (used for
         previously learned symbolic actions in DSP).
-        
+
     finish_tokens: bool
         Do we need to finish this token. There are instances where we have
-        already done this. Most likely you will want this to be True. 
+        already done this. Most likely you will want this to be True.
 
     Returns
     _______
@@ -139,7 +137,7 @@ def from_tokens(tokens, skip_cache=False, on_policy=True, finish_tokens=True):
     '''
         Truncate expressions that complete early; extend ones that don't complete
     '''
-  
+
     if finish_tokens:
         tokens = _finish_tokens(tokens)
 
@@ -227,11 +225,11 @@ class Program(object):
         """
         Builds the Program from a list of of integers corresponding to Tokens.
         """
-        
-        # Can be empty if we are unpickling 
+
+        # Can be empty if we are unpickling
         if tokens is not None:
             self._init(tokens, on_policy)
-            
+
     def _init(self, tokens, on_policy=True):
 
         self.traversal = [Program.library[t] for t in tokens]
@@ -438,7 +436,7 @@ class Program(object):
                     return y, invalid, error_node, error_type
 
             Program.execute_function = unsafe_execute
-                
+
     @cached_property
     def r(self):
         """Evaluates and returns the reward of the program"""
@@ -511,7 +509,7 @@ class Program(object):
         print("\tInvalid: {}".format(self.invalid))
         print("\tTraversal: {}".format(self))
         if self.task.task_type != 'binding':
-            print("\tExpression:") 
+            print("\tExpression:")
             print("{}\n".format(indent(self.pretty(), '\t  ')))
 
     def __repr__(self):

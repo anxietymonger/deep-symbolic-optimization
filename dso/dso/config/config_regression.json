@@ -75,11 +75,7 @@
    "training" : {
       "n_samples" : 2000000,
       "batch_size" : 1000,
-      "epsilon" : 0.05,
-
-      // Recommended to set this to as many cores as you can use! Especially if
-      // using the "const" token.
-      "n_cores_batch" : 1
+      "epsilon" : 0.05
    },
 
    // // Only the key Policy Optimizer hyperparameters are listed here. See
@@ -87,21 +83,7 @@
    "policy_optimizer" : {
       "learning_rate" : 0.0005,
       "entropy_weight" : 0.03,
-      "entropy_gamma" : 0.7,
-
-      // EXPERIMENTAL: Proximal policy optimization hyperparameters.
-      // "policy_optimizer_type" : "ppo",
-      // "ppo_clip_ratio" : 0.2,
-      // "ppo_n_iters" : 10,
-      // "ppo_n_mb" : 4,
-
-      // EXPERIMENTAL: Priority queue training hyperparameters.
-      // "policy_optimizer_type" : "pqt",
-      // "pqt_k" : 10,
-      // "pqt_batch_size" : 1,
-      // "pqt_weight" : 200.0,
-      // "pqt_use_pg" : false
-
+      "entropy_gamma" : 0.7
    },
 
    // Hyperparameters related to including in situ priors and constraints. Each

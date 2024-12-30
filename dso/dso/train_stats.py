@@ -258,10 +258,9 @@ class StatsLogger():
             header = iteration == 1
             df_topsamples.to_csv(self.buffer_top_samples, mode='a', index=False, header=header)
 
-    def save_results(self, pool, n_samples):
+    def save_results(self, n_samples):
         """
         Saves stats that are available only after all iterations are finished
-        :param pool: Pool used to parallelize reward computation
         :param n_samples: Total number of samples
         """
         # First of all, saves any pending buffer
@@ -294,11 +293,7 @@ class StatsLogger():
             r = [p.r for p in programs]
             i_hof = np.argsort(r)[-self.hof:][::-1]  # Indices of top hof Programs
             hof = [programs[i] for i in i_hof]
-
-            if pool is not None:
-                results = pool.map(hof_work, hof)
-            else:
-                results = list(map(hof_work, hof))
+            results = list(map(hof_work, hof))
 
             eval_keys = list(results[0][-1].keys())
             columns = ["r", "count_on_policy", "count_off_policy", "expression", "traversal"] + eval_keys
@@ -328,11 +323,7 @@ class StatsLogger():
             pareto_efficient_mask = is_pareto_efficient(costs)  # List of bool
             pf = list(compress(all_programs, pareto_efficient_mask))
             pf.sort(key=lambda p: p.complexity) # Sort by complexity
-
-            if pool is not None:
-                results = pool.map(pf_work, pf)
-            else:
-                results = list(map(pf_work, pf))
+            results = list(map(pf_work, pf))
 
             eval_keys = list(results[0][-1].keys())
             columns = ["complexity", "r", "count_on_policy", "count_off_policy", "expression", "traversal"] + eval_keys
