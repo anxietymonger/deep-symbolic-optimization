@@ -133,18 +133,6 @@ class HierarchicalTask(Task):
         super(Task).__init__()
 
     def get_next_obs(self, actions, obs, already_finished):
-        """
-        Parameters
-        ----------
-        actions : np.ndarray (dtype=np.int32)
-            Actions selected so far.
-            If 1D array (batch_size,), will be reshaped to (batch_size, 1)
-            If 2D array (batch_size, current_length), used as-is
-        """
-        # Ensure actions is always 2D (batch_size, seq_length)
-        if actions.ndim == 1:
-            actions = actions.reshape(-1, 1)
-
         action = actions[:, -1]  # Get last action from history
         dangling = obs[:, 3]
         lib = self.library

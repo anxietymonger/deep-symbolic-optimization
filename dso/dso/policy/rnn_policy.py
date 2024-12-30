@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from loguru import logger
 
 from dso.program import Program
 from dso.policy import Policy
@@ -139,9 +138,9 @@ class RNNPolicy(Policy):
             actions = []
             obs = []
             priors = []
-
             hidden = None
-            all_actions = []  # Track all actions for proper shape
+            next_obs = None
+            next_prior = None
             for t in range(self.max_length):
                 if t == 0:
                     initial_obs = Program.task.reset_task(self.prior)
@@ -151,6 +150,7 @@ class RNNPolicy(Policy):
 
                     ob = initial_obs
                     prior = initial_prior
+                    finished = np.zeros(n, dtype=bool)
                 else:
                     ob = next_obs
                     prior = next_prior
@@ -169,14 +169,10 @@ class RNNPolicy(Policy):
                 obs.append(ob)
                 priors.append(prior)
 
-                # Create proper action history for get_next_obs
-                all_actions.append(action)
-                actions_history = torch.stack(all_actions, dim=1)  # [batch_size, t+1]
-
                 next_obs, next_prior, finished = Program.task.get_next_obs(
-                    actions_history.cpu().numpy(),
-                    input.cpu().numpy(),
-                    np.zeros(n, dtype=bool)
+                    torch.stack(actions, dim=1).cpu().numpy(),
+                    ob.cpu().numpy(),
+                    finished
                 )
                 next_obs = torch.tensor(next_obs, dtype=torch.float32, device=self.device)
                 next_prior = torch.tensor(next_prior, dtype=torch.float32, device=self.device)
@@ -188,20 +184,7 @@ class RNNPolicy(Policy):
             obs = torch.stack(obs, dim=2)
             priors = torch.stack(priors, dim=1)
 
-        # logger.info(f"{priors}")
-
         return actions, obs, priors
-
-    def compute_probs(self, memory_batch, log=False):
-        """Compute the probabilities of a Batch."""
-        self.eval()
-        with torch.no_grad():
-            if log:
-                fetch = self.memory_logps
-            else:
-                fetch = self.memory_probs
-            probs = fetch(memory_batch)
-        return probs
 
     def apply_action_prob_lowerbound(self, logits):
         """Applies a lower bound to probabilities of each action.

@@ -13,7 +13,6 @@ from datetime import datetime
 import numpy as np
 import torch
 import commentjson as json
-from loguru import logger
 
 from dso.task import set_task
 from dso.train import Trainer
@@ -183,7 +182,6 @@ class DeepSymbolicOptimizer():
 
     def make_prior(self):
         prior = make_prior(Program.library, self.config_prior)
-        logger.info(f"Prior: {prior.priors}")
         return prior
 
     def make_state_manager(self):

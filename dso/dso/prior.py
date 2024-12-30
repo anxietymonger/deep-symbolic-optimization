@@ -6,7 +6,6 @@ from copy import deepcopy
 
 import numpy as np
 from prettytable import PrettyTable
-from loguru import logger
 
 from dso.library import TokenNotFoundError, MultiDiscreteAction
 from dso.subroutines import ancestors
@@ -20,7 +19,6 @@ from dso.utils import import_custom_source
 
 def make_prior(library, config_prior):
     """Factory function for JointPrior object."""
-    logger.info(f"{config_prior}")
 
     config_prior = deepcopy(config_prior)
 

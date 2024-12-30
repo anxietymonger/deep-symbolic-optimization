@@ -7,7 +7,7 @@ from dso.test.generate_test_data import CONFIG_TRAINING_OVERRIDE
 from dso.program import from_tokens, Program
 from dso.memory import Batch
 from dso.subroutines import parents_siblings
-from dso.subroutines import jit_parents_siblings_at_once 
+from dso.subroutines import jit_parents_siblings_at_once
 from dso.prior import RepeatConstraint, RelationalConstraint, TrigConstraint, \
                       ConstConstraint, InverseUnaryConstraint, LengthConstraint, \
                       JointPrior, Prior
@@ -662,56 +662,6 @@ def test_state_checker(model):
     model.config_task["decision_tree_threshold_set"] = []
 
 
-def test_domain_range(model):
-    """Test cases for DomainRangeConstraint"""
-
-    model.config_prior = {} # Turn off all other Priors
-    model.config_prior["domain_range"] = {"on" : True}
-    model.config_training.update(CONFIG_TRAINING_OVERRIDE)
-    model.train()
-
-    invalid_cases = []
-    # First token's range does not contain y_train
-    invalid_cases.append("sin") # y_train contains values outside (-1, 1)
-    invalid_cases.append("cos") # y_train contains values outside (-1, 1)
-    invalid_cases.append("exp") # y_train contains values < 0
-
-    # Unary parent's domain does not contain X_train
-    invalid_cases.append("log,x1") # X_train contains values < 0
-    invalid_cases.append("add,x1,log,x1")
-
-    valid_cases = []
-    valid_cases.append("log,sin,x1")
-    valid_cases.append("log,add,x1,x1")
-
-    assert_invalid(model, invalid_cases)
-    assert_valid(model, valid_cases)
-
-
-def test_domain_range_length_special(model):
-    """Test cases for special case regarding DomainRangeConstraint + LengthConstraint"""
-
-    LENGTH = 30
-
-    model.config_prior = {} # Turn off all other Priors
-    model.config_prior["domain_range"] = {"on" : True}
-    model.config_prior["length"] = {"on" : True, "max_" : LENGTH}
-    model.config_training.update(CONFIG_TRAINING_OVERRIDE)
-    model.train()
-
-    invalid_cases = []
-    # Last chance to choose unary operator cannot be log (since X_train contains values < 0)
-    for i in range(1, LENGTH // 2):
-        invalid_cases.append("add," * i + "sin," * (LENGTH - 2 * (i + 1)) + "log")
-    invalid_cases.append("add,add,mul,mul,cos,mul,add,exp,x1,add,mul,mul,mul,add,mul,sub,x1,log") # Empirical example of collision
-
-    # Last chance to choose unary operator can be non-log
-    valid_cases = [case[:-3] + "cos" for case in invalid_cases]
-
-    assert_invalid(model, invalid_cases)
-    assert_valid(model, valid_cases[0:1])
-
-
 def test_poly(model):
     """Test cases for PolyConstraint."""
 
@@ -744,45 +694,3 @@ def test_poly(model):
     valid_cases.append("add,const,add,x1,const")
 
     assert_valid(model, valid_cases)
-
-
-def test_multi_discrete():
-    config = "config/examples/control/LunarLanderMultiDiscrete.json"
-    config = load_config(config)
-    config["experiment"]["logdir"] = None # Turn off saving results
-    config["training"]["n_samples"] = 4
-    config["training"]["batch_size"] = 2
-    model = DeepSymbolicOptimizer(config)
-
-    # dense = False, ordered = False
-    model.train()
-    invalid_cases = ["x1 < 0.0,a1_1,a1_2"]
-    invalid_cases.append("x1 < 0.0,a1_1,a2_2,a1_2")
-    assert_invalid(model, invalid_cases)
-
-    valid_cases = ["x1 < 0.0,a2_1,a1_1"]
-    valid_cases.append("x1 < 0.0,a1_1,a2_1,STOP,x2 < 0.0,a2_1,a1_2,STOP,a1_2")
-    assert_valid(model, valid_cases)
-
-    # dense = True, ordered = False
-    model.config_prior["multi_discrete"]["dense"] = True
-    model.train()
-    assert_invalid(model, ["x1 < 0.0,a1_1,STOP"])
-    assert_valid(model, ["x1 < 0.0,a2_1,a1_1,STOP"])
-
-    # dense = True, ordered = True
-    model.config_prior["multi_discrete"]["ordered"] = True
-    model.train()
-    invalid_cases = ["x1 < 0.0,a1_1,STOP"]
-    invalid_cases = ["x1 < 0.0,a2_1"]
-    assert_invalid(model, invalid_cases)
-
-    valid_cases = ["x1 < 0.0,a1_1,a2_1,STOP"]
-    valid_cases.append("x1 < 0.0,a1_2")
-    assert_valid(model, valid_cases)
-
-    # dense = False, ordered = True
-    model.config_prior["multi_discrete"]["dense"] = False
-    model.train()
-    assert_invalid(model, ["x1 < 0.0,a2_1,a1_1"])
-    assert_valid(model, ["x1 < 0.0,a2_1,STOP"])

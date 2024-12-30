@@ -26,8 +26,7 @@ class PGPolicyOptimizer(PolicyOptimizer):
             baseline = torch.tensor(baseline, dtype=torch.float32)
 
         # Get neglogp and entropy from policy
-        neglogp, entropy = self.policy.make_neglogp_and_entropy(sampled_batch,
-                                                               self.entropy_gamma)
+        neglogp, entropy = self.policy.make_neglogp_and_entropy(sampled_batch, self.entropy_gamma)
 
         # Compute rewards
         rewards = torch.tensor(sampled_batch.rewards, dtype=torch.float32)

@@ -25,7 +25,9 @@ required = [
     "tqdm",
     "commentjson",
     "PyYAML==5.4.1",
-    "prettytable"
+    "prettytable",
+    "torch",
+    "loguru",
 ]
 
 extras = {

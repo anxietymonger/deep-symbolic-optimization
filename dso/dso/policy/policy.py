@@ -137,16 +137,3 @@ class Policy(nn.Module, ABC):
             Or a batch
         """
         raise NotImplementedError
-
-    @abstractmethod
-    def compute_probs(self, memory_batch, log=False):
-        """Compute the probabilities of a Batch.
-
-        Returns
-        -------
-        probs :
-            Or a batch
-        """
-        raise NotImplementedError
-
-
