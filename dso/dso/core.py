@@ -66,7 +66,6 @@ class DeepSymbolicOptimizer():
         self.prior = self.make_prior()
         self.state_manager = self.make_state_manager()
         self.policy = self.make_policy()
-        logger.info(f"{self.policy.prior.priors}")
         self.policy_optimizer = self.make_policy_optimizer()
         self.gp_controller = self.make_gp_controller()
         self.logger = self.make_logger()
