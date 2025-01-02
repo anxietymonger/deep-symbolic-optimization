@@ -134,7 +134,7 @@ class HierarchicalTask(Task):
 
     def get_next_obs(self, actions, obs, already_finished):
         action = actions[:, -1]  # Get last action from history
-        dangling = obs[:, 3]
+        dangling = obs[:, 3].copy()
         lib = self.library
 
         # Compute parents and siblings using full action history

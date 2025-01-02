@@ -20,6 +20,7 @@ class LinearWrapper(nn.Module):
         output, hidden = self.rnn_cell(x, hidden)
         return self.linear(output), hidden
 
+
 def safe_cross_entropy(p, logq, dim=-1):
     """Compute p * logq safely."""
     # Handle cases where p is 0
@@ -59,15 +60,9 @@ class RNNPolicy(Policy):
 
         # Create recurrent cell
         if cell == "lstm":
-            rnn = nn.LSTM(input_size=input_size,
-                         hidden_size=num_units,
-                         num_layers=num_layers,
-                         batch_first=True)
+            rnn = nn.LSTM(input_size=input_size, hidden_size=num_units, num_layers=num_layers, batch_first=True)
         elif cell == "gru":
-            rnn = nn.GRU(input_size=input_size,
-                        hidden_size=num_units,
-                        num_layers=num_layers,
-                        batch_first=True)
+            rnn = nn.GRU(input_size=input_size, hidden_size=num_units, num_layers=num_layers, batch_first=True)
         else:
             raise ValueError(f"Unsupported cell type: {cell}")
 
@@ -141,6 +136,7 @@ class RNNPolicy(Policy):
             hidden = None
             next_obs = None
             next_prior = None
+            finished = np.zeros(n, dtype=bool)
             for t in range(self.max_length):
                 if t == 0:
                     initial_obs = Program.task.reset_task(self.prior)
@@ -150,10 +146,14 @@ class RNNPolicy(Policy):
 
                     ob = initial_obs
                     prior = initial_prior
-                    finished = np.zeros(n, dtype=bool)
                 else:
-                    ob = next_obs
-                    prior = next_prior
+                    next_obs, next_prior, finished = Program.task.get_next_obs(
+                        torch.stack(actions, dim=1).cpu().numpy(),
+                        ob.cpu().numpy(),
+                        finished
+                    )
+                    ob = torch.tensor(next_obs, dtype=torch.float32, device=self.device)
+                    prior = torch.tensor(next_prior, dtype=torch.float32, device=self.device)
 
                 input = self.state_manager.get_tensor_input(ob)
                 logits, hidden = self.rnn(input.unsqueeze(1), hidden)
@@ -168,14 +168,6 @@ class RNNPolicy(Policy):
                 actions.append(action)
                 obs.append(ob)
                 priors.append(prior)
-
-                next_obs, next_prior, finished = Program.task.get_next_obs(
-                    torch.stack(actions, dim=1).cpu().numpy(),
-                    ob.cpu().numpy(),
-                    finished
-                )
-                next_obs = torch.tensor(next_obs, dtype=torch.float32, device=self.device)
-                next_prior = torch.tensor(next_prior, dtype=torch.float32, device=self.device)
 
                 if finished.all():
                     break

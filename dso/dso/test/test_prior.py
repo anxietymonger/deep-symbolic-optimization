@@ -256,7 +256,7 @@ def test_no_inputs(model):
     """Test cases for NoInputsConstraint."""
     # This test case needs a float Token before creating the model
     model.config["task"]["dataset"] = "Constant-1"
-    model.pool = model.make_pool_and_set_task() # Resets Program.task with new Task
+    model.make_task() # Resets Program.task with new Task
 
     model.config_prior = {} # Turn off all other Priors
     model.config_prior["no_inputs"] = {"on" : True}
@@ -450,7 +450,7 @@ def test_const(model):
     """Test cases for ConstConstraint."""
     # This test case needs the const Token before creating the model
     model.config["task"]["dataset"] = "Constant-1"
-    model.pool = model.make_pool_and_set_task() # Resets Program.task with new Task
+    model.make_task() # Resets Program.task with new Task
 
     model.config_prior = {} # Turn off all other Priors
     model.config_prior["const"] = {"on" : True}

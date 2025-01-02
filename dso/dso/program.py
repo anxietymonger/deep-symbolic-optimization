@@ -5,7 +5,8 @@ import warnings
 from textwrap import indent
 
 import numpy as np
-from dso.library import Token, PlaceholderConstant, Polynomial
+
+from dso.library import PlaceholderConstant, Polynomial
 from dso.const import make_const_optimizer
 from dso.utils import cached_property
 import dso.utils as U
@@ -30,9 +31,6 @@ def _finish_tokens(tokens):
         completed with repeated "x1" until the expression completes.
 
     """
-
-    if Program.task.task_type == "binding":
-        return tokens
 
     arities = np.array([Program.library.arities[t] for t in tokens])
     # Number of dangling nodes, returns the cumsum up to each point

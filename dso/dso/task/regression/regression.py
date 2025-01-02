@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import scipy
 
 from dso.task import HierarchicalTask
 from dso.library import Library, Polynomial
