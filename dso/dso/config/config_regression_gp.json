@@ -30,7 +30,7 @@
       // With protected=false, floating-point errors (e.g. log of negative
       // number) will simply returns a minimal reward. With protected=true,
       // "protected" functions will prevent floating-point errors, but may
-      // introduce discontinuities in the learned functions.      
+      // introduce discontinuities in the learned functions.
       "protected" : false,
 
       // You can add artificial reward noise directly to the reward function.
@@ -57,7 +57,7 @@
          // of least squares regressor "dso_least_squares".
          "regressor": "dso_least_squares",
          "regressor_params": {
-            // Cutoff value for p-value of coefficients. Coefficients with 
+            // Cutoff value for p-value of coefficients. Coefficients with
             // larger p-values are forced to zero.
             "cutoff_p_value": 1.0,
             // Maximum number of terms in the polynomial. If more coefficients are nonzero,
@@ -69,16 +69,16 @@
          }
       }
    },
-   
+
    // Hyperparameters related to genetic programming hybrid methods.
    "gp_meld" : {
       "run_gp_meld" : true,
-      "population_size" : 100,
-      "generations" : 20,
+      "population_size" : 500,
+      "generations" : 25,
       "crossover_operator" : "cxOnePoint",
       "p_crossover" : 0.5,
       "mutation_operator" : "multi_mutate",
-      "p_mutate" : 0.5,   
+      "p_mutate" : 0.5,
       "tournament_size" : 5,
       "train_n" : 50,
       "mutate_tree_max" : 3,
@@ -89,26 +89,23 @@
    // Only the key training hyperparameters are listed here. See
    // config_common.json for the full list.
    "training" : {
-      "n_samples" : 20000,
+      "n_samples" : 1000000,
       "batch_size" : 500,
-      "epsilon" : 0.02,
-      // Recommended to set this to as many cores as you can use! Especially if
-      // using the "const" token.
-      "n_cores_batch" : -1
+      "epsilon" : 0.02
    },
 
    // Only the key RNN controller hyperparameters are listed here. See
    // config_common.json for the full list.
    "controller" : {
       "learning_rate": 0.0025,
-      "entropy_weight" : 0.03,
+      "entropy_weight" : 0.05,
       "entropy_gamma" : 0.7,
       // EXPERIMENTAL: Priority queue training hyperparameters.
-      "pqt" : true,
-      "pqt_k" : 10,
-      "pqt_batch_size" : 1,
-      "pqt_weight" : 200.0,
-      "pqt_use_pg" : false
+      // "pqt" : true,
+      // "pqt_k" : 10,
+      // "pqt_batch_size" : 1,
+      // "pqt_weight" : 200.0,
+      // "pqt_use_pg" : false
    },
 
    // Hyperparameters related to including in situ priors and constraints. Each
